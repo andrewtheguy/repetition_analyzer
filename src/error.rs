@@ -22,7 +22,7 @@ pub enum AppError {
     MissingTextField { line: usize, key: String },
 
     #[error("line {line}: {message}")]
-    FilterMismatch { line: usize, message: String },
+    LineError { line: usize, message: String },
 
     #[error("line {line}: duplicate id '{id}'")]
     DuplicateId { line: usize, id: String },

@@ -172,7 +172,7 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
             }
             Ok(None) => continue,
             Err(message) => {
-                return Err(AppError::FilterMismatch {
+                return Err(AppError::LineError {
                     line: line_num + 1,
                     message,
                 })

@@ -1,0 +1,131 @@
+name: Release (Manual)
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name (leave empty for auto-generated yyyymmddhhmmss)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+      is_prerelease: ${{ steps.tag.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "release_tag=$(date +'%Y%m%d%H%M%S')" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          elif [ "$REF_NAME" != "main" ]; then
+            echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          elif echo "$TAG" | grep -qiE '(alpha|beta|rc)'; then
+            echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-linux:
+    needs: setup
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: linux-amd64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            suffix: linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Release
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename Binaries
+        run: |
+          mv target/${{ matrix.target }}/release/repetition_analyzer target/release/repetition_analyzer-${{ matrix.suffix }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.suffix }}
+          path: target/release/repetition_analyzer-${{ matrix.suffix }}
+
+  build-macos:
+    needs: setup
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Release
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+
+      - name: Rename Binaries
+        run: |
+          mv target/aarch64-apple-darwin/release/repetition_analyzer target/release/repetition_analyzer-macos-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: target/release/repetition_analyzer-macos-arm64
+
+  build-windows:
+    needs: setup
+    if: needs.setup.outputs.is_prerelease == 'false'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build Release
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Rename Binaries
+        run: |
+          move target\x86_64-pc-windows-msvc\release\repetition_analyzer.exe target\release\repetition_analyzer-windows-amd64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-amd64
+          path: target/release/repetition_analyzer-windows-amd64.exe
+
+  create-release:
+    needs: [setup, build-linux, build-macos, build-windows]
+    if: always() && needs.setup.result == 'success' && needs.build-linux.result == 'success' && needs.build-macos.result == 'success' && (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.setup.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Release ${{ needs.setup.outputs.release_tag }}
+          prerelease: ${{ needs.setup.outputs.is_prerelease }}
+          generate_release_notes: true
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

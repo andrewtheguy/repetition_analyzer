@@ -8,11 +8,6 @@ use crate::error::AppError;
 pub struct EnrichConfig {
     pub source: String,
     pub result: String,
-    pub start_key: String,
-    pub end_key: String,
-    pub start_formatted_key: String,
-    pub end_formatted_key: String,
-    pub id_key: Option<String>,
 }
 
 struct EntryInfo {
@@ -23,11 +18,10 @@ struct EntryInfo {
     id: Option<String>,
 }
 
-/// Build lookup from a preprocessed JSONL file. Every line must be valid JSON.
-fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryInfo>> {
-    let source_path = &config.source;
-    let file = File::open(Path::new(source_path)).map_err(|e| AppError::FileOpen {
-        path: source_path.clone(),
+/// Build lookup from a preprocessed JSONL file (canonical format).
+fn build_entry_lookup(source: &str) -> crate::error::Result<Vec<EntryInfo>> {
+    let file = File::open(Path::new(source)).map_err(|e| AppError::FileOpen {
+        path: source.to_string(),
         source: e,
     })?;
     let reader = BufReader::new(file);
@@ -43,26 +37,21 @@ fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryIn
             source: e,
         })?;
 
-        let id = config.id_key.as_ref().and_then(|key| {
-            obj.get(key).and_then(|v| match v {
-                Value::String(s) => Some(s.clone()),
-                Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            })
-        });
-
         entries.push(EntryInfo {
-            start_ms: obj.get(&config.start_key).and_then(|v| v.as_i64()),
-            end_ms: obj.get(&config.end_key).and_then(|v| v.as_i64()),
+            start_ms: obj.get("start_ms").and_then(|v| v.as_i64()),
+            end_ms: obj.get("end_ms").and_then(|v| v.as_i64()),
             start_formatted: obj
-                .get(&config.start_formatted_key)
+                .get("start_formatted")
                 .and_then(|v| v.as_str())
                 .map(String::from),
             end_formatted: obj
-                .get(&config.end_formatted_key)
+                .get("end_formatted")
                 .and_then(|v| v.as_str())
                 .map(String::from),
-            id,
+            id: obj
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         });
     }
 
@@ -129,7 +118,7 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
 }
 
 pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
-    let lookup = build_entry_lookup(config)?;
+    let lookup = build_entry_lookup(&config.source)?;
 
     let result_file = File::open(&config.result).map_err(|e| AppError::FileOpen {
         path: config.result.clone(),
@@ -183,7 +172,7 @@ pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
 }
 
 pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
-    let lookup = build_entry_lookup(config)?;
+    let lookup = build_entry_lookup(&config.source)?;
 
     eprintln!(
         "Loaded {} entries from source for enrichment lookup",

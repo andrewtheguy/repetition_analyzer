@@ -1,5 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -116,21 +117,15 @@ pub struct Transcription {
     pub text: String,
 }
 
-pub struct ParseOptions {
-    pub text_key: String,
-    pub id_key: Option<String>,
-}
-
-/// Parse a preprocessed JSONL file. Every line must be valid JSON with the text key present.
-pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec<Transcription>> {
+/// Parse a preprocessed JSONL file. Expects canonical format with "text" and "id" fields.
+pub fn parse_jsonl(path: &Path) -> crate::error::Result<Vec<Transcription>> {
     let file = File::open(path).map_err(|e| AppError::FileOpen {
         path: path.display().to_string(),
         source: e,
     })?;
     let reader = BufReader::new(file);
     let mut transcriptions = Vec::new();
-    let mut seen_ids: Option<std::collections::HashSet<String>> =
-        if opts.id_key.is_some() { Some(std::collections::HashSet::new()) } else { None };
+    let mut seen_ids = HashSet::new();
 
     for (line_num, line) in reader.lines().enumerate() {
         let line = line.map_err(|e| AppError::LineRead {
@@ -142,29 +137,28 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec
             source: e,
         })?;
 
-        let text = match obj.get(&opts.text_key) {
+        let text = match obj.get("text") {
             Some(Value::String(s)) => s.clone(),
             _ => {
                 return Err(AppError::MissingTextField {
                     line: line_num + 1,
-                    key: opts.text_key.clone(),
+                    key: "text".to_string(),
                 })
             }
         };
 
-        let id = if let Some(id_key) = &opts.id_key {
-            match obj.get(id_key) {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Number(n)) => n.to_string(),
-                _ => (line_num + 1).to_string(),
+        let id = match obj.get("id") {
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Number(n)) => n.to_string(),
+            _ => {
+                return Err(AppError::MissingTextField {
+                    line: line_num + 1,
+                    key: "id".to_string(),
+                })
             }
-        } else {
-            (line_num + 1).to_string()
         };
 
-        if let Some(seen) = &mut seen_ids
-            && !seen.insert(id.clone())
-        {
+        if !seen_ids.insert(id.clone()) {
             return Err(AppError::DuplicateId {
                 line: line_num + 1,
                 id,
@@ -195,40 +189,33 @@ mod tests {
     }
 
     #[test]
-    fn parse_default_text_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "hello world"}"#, r#"{"text": "goodbye"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
+    fn parse_canonical_format() {
+        let f = write_temp_jsonl(&[
+            r#"{"text": "hello world", "id": "a1"}"#,
+            r#"{"text": "goodbye", "id": "a2"}"#,
+        ]);
+        let entries = parse_jsonl(f.path()).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "hello world");
+        assert_eq!(entries[0].id, "a1");
         assert_eq!(entries[1].text, "goodbye");
+        assert_eq!(entries[1].id, "a2");
         assert_eq!(entries[0].index, 0);
         assert_eq!(entries[1].index, 1);
     }
 
     #[test]
-    fn parse_custom_text_key() {
-        let f = write_temp_jsonl(&[r#"{"content": "foo bar"}"#]);
-        let opts = ParseOptions {
-            text_key: "content".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "foo bar");
+    fn parse_errors_on_missing_text() {
+        let f = write_temp_jsonl(&[r#"{"id": "a1", "other": "no text"}"#]);
+        let result = parse_jsonl(f.path());
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::MissingTextField { .. }));
     }
 
     #[test]
-    fn parse_errors_on_missing_text_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "kept"}"#, r#"{"other": "no text"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let result = parse_jsonl(f.path(), &opts);
+    fn parse_errors_on_missing_id() {
+        let f = write_temp_jsonl(&[r#"{"text": "hello"}"#]);
+        let result = parse_jsonl(f.path());
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::MissingTextField { .. }));
     }
@@ -247,83 +234,20 @@ mod tests {
     }
 
     #[test]
-    fn parse_id_from_line_number() {
-        let f = write_temp_jsonl(&[r#"{"text": "first"}"#, r#"{"text": "hello"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].id, "1");
-        assert_eq!(entries[1].id, "2");
-    }
-
-    #[test]
-    fn parse_custom_id_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "hi", "uid": "abc-123"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].id, "abc-123");
-    }
-
-    #[test]
-    fn parse_unique_ids_accepted() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a", "uid": "id-1"}"#,
-            r#"{"text": "b", "uid": "id-2"}"#,
-            r#"{"text": "c", "uid": "id-3"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 3);
-    }
-
-    #[test]
-    fn parse_no_uniqueness_check_without_id_key() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a"}"#,
-            r#"{"text": "b"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-    }
-
-    #[test]
     fn parse_duplicate_id_returns_err() {
         let f = write_temp_jsonl(&[
-            r#"{"text": "a", "uid": "same-id"}"#,
-            r#"{"text": "b", "uid": "same-id"}"#,
+            r#"{"text": "a", "id": "same-id"}"#,
+            r#"{"text": "b", "id": "same-id"}"#,
         ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let result = parse_jsonl(f.path(), &opts);
+        let result = parse_jsonl(f.path());
         assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            AppError::DuplicateId { .. }
-        ));
+        assert!(matches!(result.unwrap_err(), AppError::DuplicateId { .. }));
     }
 
     #[test]
     fn parse_errors_on_invalid_json() {
-        let f = write_temp_jsonl(&["not json", r#"{"text": "valid"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let result = parse_jsonl(f.path(), &opts);
+        let f = write_temp_jsonl(&["not json"]);
+        let result = parse_jsonl(f.path());
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::InvalidJson { .. }));
     }
@@ -331,15 +255,11 @@ mod tests {
     #[test]
     fn parse_index_matches_line_number() {
         let f = write_temp_jsonl(&[
-            r#"{"text": "a"}"#,
-            r#"{"text": "b"}"#,
-            r#"{"text": "c"}"#,
+            r#"{"text": "a", "id": "1"}"#,
+            r#"{"text": "b", "id": "2"}"#,
+            r#"{"text": "c", "id": "3"}"#,
         ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
+        let entries = parse_jsonl(f.path()).unwrap();
         assert_eq!(entries[0].index, 0);
         assert_eq!(entries[1].index, 1);
         assert_eq!(entries[2].index, 2);

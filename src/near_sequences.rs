@@ -186,3 +186,72 @@ pub fn find_near_duplicate_sequences(
     kept.sort_by(|a, b| b.occurrences.len().cmp(&a.occurrences.len()));
     kept
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::Transcription;
+
+    fn entry(index: usize, text: &str) -> Transcription {
+        Transcription {
+            index,
+            id: index.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn finds_near_duplicate_pair() {
+        // Two 2-entry blocks with slight text differences
+        let entries = vec![
+            entry(0, "The quick brown fox jumps over the lazy dog"),
+            entry(1, "And then nothing else happened after that event"),
+            entry(2, "filler text here"),
+            entry(3, "The quick brown fox leaps over the lazy dog"),
+            entry(4, "And then nothing else happened after that time"),
+        ];
+        let exact_seqs = vec![]; // no exact matches
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs);
+        assert_eq!(seqs.len(), 1);
+        assert_eq!(seqs[0].length, 2);
+        assert_eq!(seqs[0].occurrences.len(), 2);
+    }
+
+    #[test]
+    fn skips_exact_duplicates() {
+        // If exact sequences already cover these positions, near-dup should skip
+        let entries = vec![
+            entry(0, "identical line one"),
+            entry(1, "identical line two"),
+            entry(2, "filler"),
+            entry(3, "identical line one"),
+            entry(4, "identical line two"),
+        ];
+        let exact_seqs = vec![RepeatedSequence {
+            length: 2,
+            occurrences: vec![
+                crate::sequences::SequenceOccurrence { start_index: 0 },
+                crate::sequences::SequenceOccurrence { start_index: 3 },
+            ],
+            entry_texts: vec![
+                "identical line one".to_string(),
+                "identical line two".to_string(),
+            ],
+        }];
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs);
+        assert!(seqs.is_empty());
+    }
+
+    #[test]
+    fn no_match_below_threshold() {
+        let entries = vec![
+            entry(0, "The quick brown fox jumps over the lazy dog"),
+            entry(1, "Some other sentence entirely different from anything"),
+            entry(2, "filler"),
+            entry(3, "The quick brown fox does something completely new today"),
+            entry(4, "A totally unrelated sentence about weather and rain"),
+        ];
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.95, 2, &[]);
+        assert!(seqs.is_empty());
+    }
+}

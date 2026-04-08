@@ -49,7 +49,7 @@ Identifies word sequences (n-grams) that appear across multiple entries.
 
 ## 4. Repeated Sequences (Block Detection)
 
-Detects contiguous multi-entry blocks that repeat elsewhere in the broadcast. Unlike n-gram analysis (which works at the word level within a single entry), this operates at the entry level -- looking for runs of consecutive entries that reappear as a group.
+Detects contiguous multi-entry blocks that repeat elsewhere in the data. Unlike n-gram analysis (which works at the word level within a single entry), this operates at the entry level -- looking for runs of consecutive entries that reappear as a group.
 
 **How it works:**
 
@@ -57,7 +57,6 @@ Detects contiguous multi-entry blocks that repeat elsewhere in the broadcast. Un
 - For each block length from `--max-seq-len` down to `--min-seq-len`, a sliding window of fingerprints identifies blocks that appear at least `--min-seq-occurrences` times.
 - Overlapping occurrences are filtered out so each reported occurrence is distinct.
 - Shorter blocks that are fully contained within longer blocks (with similar occurrence counts) are suppressed.
-- Results include the text of each entry in the block, the timestamps of every occurrence, and the block's duration.
 
 **Tuning:**
 
@@ -75,7 +74,7 @@ Detects contiguous multi-entry blocks that repeat with minor text variations. Th
 
 - For each block length from `--max-seq-len` down to `--min-seq-len`, a sliding window generates candidate blocks.
 - Candidate blocks are bucketed by the first three words of the first entry (same bucketing strategy as single-entry near-duplicate detection) to avoid exhaustive pairwise comparison.
-- Within each bucket, blocks are compared entry-by-entry: every corresponding entry pair must independently meet the similarity threshold. This preserves alignment (entry boundaries are stable from the speech-to-text segmentation) and allows early termination when any entry pair fails.
+- Within each bucket, blocks are compared entry-by-entry: every corresponding entry pair must individually meet the similarity threshold. This preserves alignment (entry boundaries are stable) and allows early termination when any entry pair fails.
 - Blocks are grouped using greedy star-clustering: a representative is chosen, and all sufficiently similar blocks are added to its cluster.
 - Clusters where every occurrence is already covered by an exact repeated sequence are filtered out to avoid redundant reporting.
 - Shorter near-duplicate sequences that are fully contained within longer ones (with equal or greater occurrence counts) are suppressed.

@@ -122,3 +122,67 @@ pub fn extract_ngrams(
     kept.sort_by(|a, b| b.count.cmp(&a.count));
     kept
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::Transcription;
+
+    fn entry(index: usize, text: &str) -> Transcription {
+        Transcription {
+            index,
+            id: index.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn finds_repeated_trigram() {
+        let entries = vec![
+            entry(0, "the quick brown fox"),
+            entry(1, "the quick brown dog"),
+            entry(2, "the quick brown cat"),
+            entry(3, "something else entirely"),
+        ];
+        let results = extract_ngrams(&entries, 3, 3, 3);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].ngram, "the quick brown");
+        assert_eq!(results[0].count, 3);
+    }
+
+    #[test]
+    fn min_count_filters() {
+        let entries = vec![
+            entry(0, "alpha beta gamma"),
+            entry(1, "alpha beta gamma"),
+            entry(2, "delta epsilon zeta"),
+        ];
+        // min_count=3 should find nothing (only 2 occurrences)
+        let results = extract_ngrams(&entries, 3, 3, 3);
+        assert!(results.is_empty());
+
+        // min_count=2 should find it
+        let results = extract_ngrams(&entries, 3, 3, 2);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn longer_phrase_suppresses_shorter() {
+        let entries = vec![
+            entry(0, "a b c d"),
+            entry(1, "a b c d"),
+            entry(2, "a b c d"),
+        ];
+        // "a b c d" (4-gram) should suppress "a b c" (3-gram) since same count
+        let results = extract_ngrams(&entries, 3, 4, 3);
+        let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
+        assert!(ngrams.contains(&"a b c d"));
+        assert!(!ngrams.contains(&"a b c"));
+    }
+
+    #[test]
+    fn empty_entries() {
+        let results = extract_ngrams(&[], 3, 5, 2);
+        assert!(results.is_empty());
+    }
+}

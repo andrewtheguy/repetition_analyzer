@@ -138,6 +138,10 @@ enum Command {
         /// Filter entries by key=value (must match what was used for analyze)
         #[arg(long)]
         filter: Option<String>,
+
+        /// Optional JSON key to use as entry ID (must match what was used for analyze)
+        #[arg(long)]
+        id_key: Option<String>,
     },
 
     /// Preprocess a JSONL file: apply filters and optionally insert a UUID column
@@ -162,7 +166,7 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Command::Analyze {
             file,
             min_ngram,
@@ -178,24 +182,22 @@ fn main() {
             id_key,
             filter,
             format,
-        } => {
-            run_analyze(&AnalyzeConfig {
-                file,
-                min_ngram,
-                max_ngram,
-                similarity_threshold,
-                top_n,
-                min_count,
-                min_seq_len,
-                max_seq_len,
-                min_seq_occurrences,
-                seq_similarity_threshold,
-                text_key,
-                id_key,
-                filter,
-                format,
-            });
-        }
+        } => run_analyze(&AnalyzeConfig {
+            file,
+            min_ngram,
+            max_ngram,
+            similarity_threshold,
+            top_n,
+            min_count,
+            min_seq_len,
+            max_seq_len,
+            min_seq_occurrences,
+            seq_similarity_threshold,
+            text_key,
+            id_key,
+            filter,
+            format,
+        }),
         Command::Enrich {
             source,
             result,
@@ -205,35 +207,38 @@ fn main() {
             end_formatted_key,
             text_key,
             filter,
-        } => {
-            enrich::run_enrich(&enrich::EnrichConfig {
-                source,
-                result,
-                start_key,
-                end_key,
-                start_formatted_key,
-                end_formatted_key,
-                text_key,
-                filter,
-            });
-        }
+            id_key,
+        } => enrich::run_enrich(&enrich::EnrichConfig {
+            source,
+            result,
+            start_key,
+            end_key,
+            start_formatted_key,
+            end_formatted_key,
+            text_key,
+            filter,
+            id_key,
+        }),
         Command::Preprocess {
             file,
             text_key,
             filter,
             new_id_key,
-        } => {
-            preprocess::run_preprocess(&preprocess::PreprocessConfig {
-                file,
-                text_key,
-                filter,
-                new_id_key,
-            });
-        }
+        } => preprocess::run_preprocess(&preprocess::PreprocessConfig {
+            file,
+            text_key,
+            filter,
+            new_id_key,
+        }),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 
-fn run_analyze(config: &AnalyzeConfig) {
+fn run_analyze(config: &AnalyzeConfig) -> Result<(), String> {
     let start = Instant::now();
 
     // Parse
@@ -244,7 +249,8 @@ fn run_analyze(config: &AnalyzeConfig) {
         id_key: config.id_key.clone(),
         filter: parse_filter(&config.filter),
     };
-    let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts);
+    let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts)?;
+    let include_ids = config.id_key.is_some();
     eprintln!(
         "Loaded {} entries ({:.2}s)",
         entries.len(),
@@ -253,7 +259,7 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // Exact duplicates
     let t = Instant::now();
-    let duplicates = exact::find_exact_duplicates(&entries);
+    let duplicates = exact::find_exact_duplicates(&entries, include_ids);
     eprintln!(
         "Found {} duplicate groups ({:.2}s)",
         duplicates.len(),
@@ -262,7 +268,8 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // Near-duplicates
     let t = Instant::now();
-    let near_dupes = exact::find_near_duplicates(&entries, config.similarity_threshold);
+    let near_dupes =
+        exact::find_near_duplicates(&entries, config.similarity_threshold, include_ids);
     eprintln!(
         "Found {} near-duplicate clusters ({:.2}s)",
         near_dupes.len(),
@@ -271,8 +278,13 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // N-grams
     let t = Instant::now();
-    let ngram_results =
-        ngrams::extract_ngrams(&entries, config.min_ngram, config.max_ngram, config.min_count);
+    let ngram_results = ngrams::extract_ngrams(
+        &entries,
+        config.min_ngram,
+        config.max_ngram,
+        config.min_count,
+        include_ids,
+    );
     eprintln!(
         "Found {} significant n-grams ({:.2}s)",
         ngram_results.len(),
@@ -286,6 +298,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         config.min_seq_len,
         config.max_seq_len,
         config.min_seq_occurrences,
+        include_ids,
     );
     eprintln!(
         "Found {} repeated sequence patterns ({:.2}s)",
@@ -302,6 +315,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         config.seq_similarity_threshold,
         config.min_seq_occurrences,
         &repeated_seqs,
+        include_ids,
     );
     eprintln!(
         "Found {} near-duplicate sequence patterns ({:.2}s)",
@@ -327,4 +341,5 @@ fn run_analyze(config: &AnalyzeConfig) {
         Format::Json => report::print_json_report(&data),
         Format::Human => report::print_report(&data, config.top_n),
     }
+    Ok(())
 }

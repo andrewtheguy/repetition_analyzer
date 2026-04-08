@@ -55,7 +55,7 @@ pub fn find_repeated_sequences(
             // Filter out overlapping occurrences
             let mut filtered = vec![positions[0]];
             for &pos in &positions[1..] {
-                if pos >= filtered.last().unwrap() + seq_len {
+                if pos >= filtered[filtered.len() - 1] + seq_len {
                     filtered.push(pos);
                 }
             }

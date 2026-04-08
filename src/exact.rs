@@ -118,3 +118,80 @@ pub fn find_near_duplicates(
     clusters.sort_by(|a, b| b.total_count.cmp(&a.total_count));
     clusters
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::Transcription;
+
+    fn entry(index: usize, text: &str) -> Transcription {
+        Transcription {
+            index,
+            id: index.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn exact_duplicates_found() {
+        let entries = vec![
+            entry(0, "Hello world"),
+            entry(1, "Something else"),
+            entry(2, "Hello world"),
+            entry(3, "Hello world"),
+        ];
+        let groups = find_exact_duplicates(&entries);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 3);
+        assert_eq!(groups[0].indices, vec![0, 2, 3]);
+    }
+
+    #[test]
+    fn exact_duplicates_case_insensitive() {
+        let entries = vec![entry(0, "Hello World"), entry(1, "hello world")];
+        let groups = find_exact_duplicates(&entries);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 2);
+    }
+
+    #[test]
+    fn no_duplicates() {
+        let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
+        let groups = find_exact_duplicates(&entries);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn near_duplicates_clustered() {
+        let entries = vec![
+            entry(0, "The quick brown fox jumps over the lazy dog"),
+            entry(1, "The quick brown fox leaps over the lazy dog"),
+            entry(2, "Something completely different and unrelated here"),
+        ];
+        let clusters = find_near_duplicates(&entries, 0.80);
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].total_count, 2);
+    }
+
+    #[test]
+    fn near_duplicates_low_threshold_no_match() {
+        let entries = vec![
+            entry(0, "The quick brown fox jumps over the lazy dog"),
+            entry(1, "The quick brown fox leaps over the lazy dog"),
+        ];
+        // Very high threshold should not match
+        let clusters = find_near_duplicates(&entries, 0.99);
+        assert!(clusters.is_empty());
+    }
+
+    #[test]
+    fn near_duplicates_different_prefix_no_match() {
+        // Different first 3 words means different buckets, so no comparison
+        let entries = vec![
+            entry(0, "Alpha beta gamma some long text here for similarity"),
+            entry(1, "Delta epsilon zeta some long text here for similarity"),
+        ];
+        let clusters = find_near_duplicates(&entries, 0.50);
+        assert!(clusters.is_empty());
+    }
+}

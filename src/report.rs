@@ -6,16 +6,28 @@ use crate::ngrams::NgramResult;
 use crate::parse::Transcription;
 use crate::sequences::RepeatedSequence;
 
-#[derive(Serialize)]
-pub struct Report<'a> {
+pub struct ReportData<'a> {
     pub file_path: &'a str,
-    pub total_entries: usize,
-    pub total_duration_secs: f64,
-    pub exact_duplicates: &'a [DuplicateGroup],
-    pub near_duplicates: &'a [NearDuplicateCluster],
+    pub entries: &'a [Transcription],
+    pub id_column: Option<&'a str>,
+    pub duplicates: &'a [DuplicateGroup],
+    pub near_dupes: &'a [NearDuplicateCluster],
     pub ngrams: &'a [NgramResult],
-    pub repeated_sequences: &'a [RepeatedSequence],
-    pub near_duplicate_sequences: &'a [NearDuplicateSequence],
+    pub sequences: &'a [RepeatedSequence],
+    pub near_seqs: &'a [NearDuplicateSequence],
+}
+
+#[derive(Serialize)]
+struct JsonReport<'a> {
+    file_path: &'a str,
+    total_entries: usize,
+    id_column: Option<&'a str>,
+    id_from_line_number: bool,
+    exact_duplicates: &'a [DuplicateGroup],
+    near_duplicates: &'a [NearDuplicateCluster],
+    ngrams: &'a [NgramResult],
+    repeated_sequences: &'a [RepeatedSequence],
+    near_duplicate_sequences: &'a [NearDuplicateSequence],
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
@@ -27,82 +39,44 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-fn compute_total_duration(entries: &[Transcription]) -> f64 {
-    if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-        last.end - first.start
-    } else {
-        0.0
-    }
-}
-
-fn format_duration(secs: f64) -> String {
-    let total = secs as u64;
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
-    if h > 0 {
-        format!("{}h {:02}m {:02}s", h, m, s)
-    } else if m > 0 {
-        format!("{}m {:02}s", m, s)
-    } else {
-        format!("{}s", s)
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn print_report(
-    file_path: &str,
-    entries: &[Transcription],
-    duplicates: &[DuplicateGroup],
-    near_dupes: &[NearDuplicateCluster],
-    ngrams: &[NgramResult],
-    sequences: &[RepeatedSequence],
-    near_seqs: &[NearDuplicateSequence],
-    top_n: usize,
-) {
-    let total_duration = compute_total_duration(entries);
-
+pub fn print_report(data: &ReportData, top_n: usize) {
     // Header
     println!();
     println!("{}", "=".repeat(70));
     println!("  REPETITION ANALYSIS REPORT");
-    println!("  File: {}", file_path);
-    println!(
-        "  Entries: {} transcriptions | Duration: {}",
-        entries.len(),
-        format_duration(total_duration)
-    );
+    println!("  File: {}", data.file_path);
+    println!("  Entries: {}", data.entries.len());
     println!("{}", "=".repeat(70));
 
     // Section 1: Exact Duplicates
     println!();
     println!(
         "--- 1. EXACT DUPLICATES ({} texts appear 2+ times) ---",
-        duplicates.len()
+        data.duplicates.len()
     );
     println!();
 
-    for (i, group) in duplicates.iter().take(top_n).enumerate() {
-        let first_ts = &entries[group.indices[0]].start_formatted;
-        let last_ts = &entries[*group.indices.last().unwrap()].start_formatted;
+    for (i, group) in data.duplicates.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>3}x | \"{}\"",
             i + 1,
             group.count,
             truncate(&group.canonical_text, 120)
         );
-        println!("        First: {} | Last: {}", first_ts, last_ts);
+        let first_id = &data.entries[group.indices[0]].id;
+        let last_id = &data.entries[*group.indices.last().unwrap()].id;
+        println!("        First: id={} | Last: id={}", first_id, last_id);
         println!();
     }
 
     // Section 2: Near-Duplicates
     println!(
         "--- 2. NEAR-DUPLICATE CLUSTERS ({} clusters) ---",
-        near_dupes.len()
+        data.near_dupes.len()
     );
     println!();
 
-    for (i, cluster) in near_dupes.iter().take(top_n).enumerate() {
+    for (i, cluster) in data.near_dupes.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. Cluster ({} variants): \"{}\"",
             i + 1,
@@ -127,7 +101,7 @@ pub fn print_report(
     println!("--- 3. MOST REPEATED PHRASES ---");
     println!();
 
-    for (i, ng) in ngrams.iter().take(top_n).enumerate() {
+    for (i, ng) in data.ngrams.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>4}x ({}-gram, {} entries) | \"{}\"",
             i + 1,
@@ -142,31 +116,30 @@ pub fn print_report(
     // Section 4: Repeated Sequences
     println!(
         "--- 4. REPEATED SEGMENT BLOCKS ({} unique blocks) ---",
-        sequences.len()
+        data.sequences.len()
     );
     println!();
 
-    for (i, seq) in sequences.iter().take(top_n).enumerate() {
+    for (i, seq) in data.sequences.iter().take(top_n).enumerate() {
         println!(
-            "  {:>3}. {:>3}x | {}-entry block (~{})",
+            "  {:>3}. {:>3}x | {}-entry block",
             i + 1,
             seq.occurrences.len(),
             seq.length,
-            format_duration(seq.duration_secs)
         );
 
         for (j, text) in seq.entry_texts.iter().enumerate() {
             println!("        [{}] \"{}\"", j + 1, truncate(text, 100));
         }
 
-        // Show occurrence timestamps
-        let timestamps: Vec<String> = seq
+        // Show occurrence start indices
+        let indices: Vec<String> = seq
             .occurrences
             .iter()
             .take(10)
-            .map(|o| o.start_time.clone())
+            .map(|o| o.start_index.to_string())
             .collect();
-        print!("        At: {}", timestamps.join(", "));
+        print!("        At index: {}", indices.join(", "));
         if seq.occurrences.len() > 10 {
             print!(" ... +{} more", seq.occurrences.len() - 10);
         }
@@ -177,25 +150,24 @@ pub fn print_report(
     // Section 5: Near-Duplicate Sequences
     println!(
         "--- 5. NEAR-DUPLICATE SEGMENT BLOCKS ({} unique patterns) ---",
-        near_seqs.len()
+        data.near_seqs.len()
     );
     println!();
 
-    for (i, seq) in near_seqs.iter().take(top_n).enumerate() {
+    for (i, seq) in data.near_seqs.iter().take(top_n).enumerate() {
         println!(
-            "  {:>3}. {:>3}x | {}-entry block (~{}) | avg similarity: {:.1}%",
+            "  {:>3}. {:>3}x | {}-entry block | avg similarity: {:.1}%",
             i + 1,
             seq.occurrences.len(),
             seq.length,
-            format_duration(seq.duration_secs),
             seq.avg_similarity * 100.0
         );
 
         for (occ_idx, occ) in seq.occurrences.iter().take(3).enumerate() {
             println!(
-                "        Occurrence {} (at {}):",
+                "        Occurrence {} (index {}):",
                 occ_idx + 1,
-                occ.start_time
+                occ.start_index
             );
             for (j, text) in occ.entry_texts.iter().enumerate() {
                 println!("          [{}] \"{}\"", j + 1, truncate(text, 90));
@@ -213,44 +185,23 @@ pub fn print_report(
     // Section 6: Summary
     println!("--- 6. SUMMARY ---");
     println!();
-    println!("  Exact duplicate groups:       {}", duplicates.len());
-    println!("  Near-duplicate clusters:      {}", near_dupes.len());
-    println!("  Near-duplicate seq. patterns: {}", near_seqs.len());
+    println!("  Exact duplicate groups:       {}", data.duplicates.len());
+    println!("  Near-duplicate clusters:      {}", data.near_dupes.len());
+    println!("  Near-duplicate seq. patterns: {}", data.near_seqs.len());
 
-    if let Some(top_ng) = ngrams.first() {
+    if let Some(top_ng) = data.ngrams.first() {
         println!(
-            "  Most repeated phrase:     \"{}\" ({}x)",
+            "  Most repeated phrase:         \"{}\" ({}x)",
             truncate(&top_ng.ngram, 60),
             top_ng.count
         );
     }
 
-    if let Some(top_seq) = sequences.first() {
+    if let Some(top_seq) = data.sequences.first() {
         println!(
-            "  Most repeated block:      {}-entry block ({}x, ~{} each)",
+            "  Most repeated block:          {}-entry block ({}x)",
             top_seq.length,
             top_seq.occurrences.len(),
-            format_duration(top_seq.duration_secs)
-        );
-    }
-
-    // Estimate repetition time from exact duplicates
-    let mut dup_time = 0.0;
-    for group in duplicates {
-        // Each occurrence beyond the first is a repetition
-        let extra = group.count - 1;
-        for &idx in group.indices.iter().skip(1).take(extra) {
-            dup_time += entries[idx].end - entries[idx].start;
-        }
-    }
-
-    if total_duration > 0.0 {
-        let pct = (dup_time / total_duration) * 100.0;
-        println!(
-            "  Est. exact-duplicate time: {} of {} ({:.1}%)",
-            format_duration(dup_time),
-            format_duration(total_duration),
-            pct
         );
     }
 
@@ -258,30 +209,63 @@ pub fn print_report(
     println!("{}", "=".repeat(70));
 }
 
-pub fn print_json_report(
-    file_path: &str,
-    entries: &[Transcription],
-    duplicates: &[DuplicateGroup],
-    near_dupes: &[NearDuplicateCluster],
-    ngrams: &[NgramResult],
-    sequences: &[RepeatedSequence],
-    near_seqs: &[NearDuplicateSequence],
-) {
-    let total_duration = compute_total_duration(entries);
+fn build_json_report<'a>(data: &'a ReportData) -> JsonReport<'a> {
+    JsonReport {
+        file_path: data.file_path,
+        total_entries: data.entries.len(),
+        id_column: data.id_column,
+        id_from_line_number: data.id_column.is_none(),
+        exact_duplicates: data.duplicates,
+        near_duplicates: data.near_dupes,
+        ngrams: data.ngrams,
+        repeated_sequences: data.sequences,
+        near_duplicate_sequences: data.near_seqs,
+    }
+}
 
-    let report = Report {
-        file_path,
-        total_entries: entries.len(),
-        total_duration_secs: total_duration,
-        exact_duplicates: duplicates,
-        near_duplicates: near_dupes,
-        ngrams,
-        repeated_sequences: sequences,
-        near_duplicate_sequences: near_seqs,
-    };
-
+pub fn print_json_report(data: &ReportData) {
+    let report = build_json_report(data);
     println!(
         "{}",
         serde_json::to_string_pretty(&report).expect("failed to serialize report")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn empty_report_data(id_column: Option<&str>) -> ReportData<'_> {
+        ReportData {
+            file_path: "test.jsonl",
+            entries: &[],
+            id_column,
+            duplicates: &[],
+            near_dupes: &[],
+            ngrams: &[],
+            sequences: &[],
+            near_seqs: &[],
+        }
+    }
+
+    #[test]
+    fn json_report_line_number_id() {
+        let data = empty_report_data(None);
+        let report = build_json_report(&data);
+        let json: Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(json["id_column"], Value::Null);
+        assert_eq!(json["id_from_line_number"], Value::Bool(true));
+    }
+
+    #[test]
+    fn json_report_custom_id_column() {
+        let data = empty_report_data(Some("uid"));
+        let report = build_json_report(&data);
+        let json: Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(json["id_column"], Value::String("uid".to_string()));
+        assert_eq!(json["id_from_line_number"], Value::Bool(false));
+    }
 }

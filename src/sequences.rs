@@ -8,7 +8,6 @@ use crate::similarity::normalize;
 #[derive(Debug, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
-    pub start_time: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -16,7 +15,6 @@ pub struct RepeatedSequence {
     pub length: usize,
     pub occurrences: Vec<SequenceOccurrence>,
     pub entry_texts: Vec<String>,
-    pub duration_secs: f64,
 }
 
 fn fingerprint(text: &str) -> String {
@@ -71,17 +69,13 @@ pub fn find_repeated_sequences(
                 .iter()
                 .map(|&start_idx| SequenceOccurrence {
                     start_index: start_idx,
-                    start_time: entries[start_idx].start_formatted.clone(),
                 })
                 .collect();
-
-            let duration = entries[filtered[0] + seq_len - 1].end - entries[filtered[0]].start;
 
             all_sequences.push(RepeatedSequence {
                 length: seq_len,
                 occurrences,
                 entry_texts,
-                duration_secs: duration,
             });
         }
     }
@@ -115,4 +109,76 @@ pub fn find_repeated_sequences(
 
     kept.sort_by(|a, b| b.occurrences.len().cmp(&a.occurrences.len()));
     kept
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::Transcription;
+
+    fn entry(index: usize, text: &str) -> Transcription {
+        Transcription {
+            index,
+            id: index.to_string(),
+            text: text.to_string(),
+        }
+    }
+
+    #[test]
+    fn finds_repeated_pair() {
+        // Pattern "A B" appears at index 0-1 and 3-4
+        let entries = vec![
+            entry(0, "first line"),
+            entry(1, "second line"),
+            entry(2, "unrelated stuff"),
+            entry(3, "first line"),
+            entry(4, "second line"),
+        ];
+        let seqs = find_repeated_sequences(&entries, 2, 2, 2);
+        assert_eq!(seqs.len(), 1);
+        assert_eq!(seqs[0].length, 2);
+        assert_eq!(seqs[0].occurrences.len(), 2);
+        assert_eq!(seqs[0].occurrences[0].start_index, 0);
+        assert_eq!(seqs[0].occurrences[1].start_index, 3);
+    }
+
+    #[test]
+    fn no_repeat_below_min_occurrences() {
+        let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
+        let seqs = find_repeated_sequences(&entries, 2, 3, 2);
+        assert!(seqs.is_empty());
+    }
+
+    #[test]
+    fn overlapping_occurrences_filtered() {
+        // "A B" at 0-1, 1-2 would overlap — only non-overlapping kept
+        let entries = vec![
+            entry(0, "same line"),
+            entry(1, "same line"),
+            entry(2, "same line"),
+        ];
+        let seqs = find_repeated_sequences(&entries, 2, 2, 2);
+        // Entries 0,1 form one block and 2 can't form another (only 1 entry left)
+        // But individual entries repeat, so length-1 wouldn't apply (min_len=2)
+        // The 2-entry window "same line|same line" appears at 0 and 1, but they overlap
+        assert!(seqs.is_empty());
+    }
+
+    #[test]
+    fn longer_sequence_suppresses_shorter() {
+        // 3-entry block at 0-2 and 4-6; shorter 2-entry sub-blocks should be suppressed
+        let entries = vec![
+            entry(0, "line A"),
+            entry(1, "line B"),
+            entry(2, "line C"),
+            entry(3, "filler"),
+            entry(4, "line A"),
+            entry(5, "line B"),
+            entry(6, "line C"),
+        ];
+        let seqs = find_repeated_sequences(&entries, 2, 3, 2);
+        // Should find the 3-entry block and suppress 2-entry sub-blocks
+        assert_eq!(seqs.len(), 1);
+        assert_eq!(seqs[0].length, 3);
+    }
 }

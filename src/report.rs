@@ -64,10 +64,8 @@ pub fn print_report(data: &ReportData, top_n: usize) {
             truncate(&group.canonical_text, 120)
         );
         let first_id = &data.entries[group.indices[0]].id;
-        if let Some(&last_idx) = group.indices.last() {
-            let last_id = &data.entries[last_idx].id;
-            println!("        First: id={} | Last: id={}", first_id, last_id);
-        }
+        let last_id = &data.entries[*group.indices.last().unwrap()].id;
+        println!("        First: id={first_id} | Last: id={last_id}");
         println!();
     }
 

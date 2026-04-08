@@ -25,6 +25,8 @@ Produces a single JSON object on stdout:
 {
   "file_path": "string",
   "total_entries": 0,
+  "id_column": null,
+  "id_from_line_number": true,
   "exact_duplicates": [ ... ],
   "near_duplicates": [ ... ],
   "ngrams": [ ... ],
@@ -32,6 +34,9 @@ Produces a single JSON object on stdout:
   "near_duplicate_sequences": [ ... ]
 }
 ```
+
+- `id_column`: The `--id-key` value if provided (e.g., `"uid"`), or `null` when using line numbers.
+- `id_from_line_number`: `true` when IDs are auto-generated from file line numbers, `false` when sourced from a JSONL column.
 
 ### `exact_duplicates`
 

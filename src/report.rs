@@ -9,6 +9,7 @@ use crate::sequences::RepeatedSequence;
 pub struct ReportData<'a> {
     pub file_path: &'a str,
     pub entries: &'a [Transcription],
+    pub id_column: Option<&'a str>,
     pub duplicates: &'a [DuplicateGroup],
     pub near_dupes: &'a [NearDuplicateCluster],
     pub ngrams: &'a [NgramResult],
@@ -20,6 +21,8 @@ pub struct ReportData<'a> {
 struct JsonReport<'a> {
     file_path: &'a str,
     total_entries: usize,
+    id_column: Option<&'a str>,
+    id_from_line_number: bool,
     exact_duplicates: &'a [DuplicateGroup],
     near_duplicates: &'a [NearDuplicateCluster],
     ngrams: &'a [NgramResult],
@@ -206,19 +209,63 @@ pub fn print_report(data: &ReportData, top_n: usize) {
     println!("{}", "=".repeat(70));
 }
 
-pub fn print_json_report(data: &ReportData) {
-    let report = JsonReport {
+fn build_json_report<'a>(data: &'a ReportData) -> JsonReport<'a> {
+    JsonReport {
         file_path: data.file_path,
         total_entries: data.entries.len(),
+        id_column: data.id_column,
+        id_from_line_number: data.id_column.is_none(),
         exact_duplicates: data.duplicates,
         near_duplicates: data.near_dupes,
         ngrams: data.ngrams,
         repeated_sequences: data.sequences,
         near_duplicate_sequences: data.near_seqs,
-    };
+    }
+}
 
+pub fn print_json_report(data: &ReportData) {
+    let report = build_json_report(data);
     println!(
         "{}",
         serde_json::to_string_pretty(&report).expect("failed to serialize report")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn empty_report_data(id_column: Option<&str>) -> ReportData<'_> {
+        ReportData {
+            file_path: "test.jsonl",
+            entries: &[],
+            id_column,
+            duplicates: &[],
+            near_dupes: &[],
+            ngrams: &[],
+            sequences: &[],
+            near_seqs: &[],
+        }
+    }
+
+    #[test]
+    fn json_report_line_number_id() {
+        let data = empty_report_data(None);
+        let report = build_json_report(&data);
+        let json: Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(json["id_column"], Value::Null);
+        assert_eq!(json["id_from_line_number"], Value::Bool(true));
+    }
+
+    #[test]
+    fn json_report_custom_id_column() {
+        let data = empty_report_data(Some("uid"));
+        let report = build_json_report(&data);
+        let json: Value =
+            serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(json["id_column"], Value::String("uid".to_string()));
+        assert_eq!(json["id_from_line_number"], Value::Bool(false));
+    }
 }

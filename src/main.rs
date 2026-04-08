@@ -284,6 +284,7 @@ fn run_analyze(config: &AnalyzeConfig) {
     let data = report::ReportData {
         file_path: &config.file,
         entries: &entries,
+        id_column: config.id_key.as_deref(),
         duplicates: &duplicates,
         near_dupes: &near_dupes,
         ngrams: &ngram_results,

@@ -41,7 +41,10 @@ fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) 
                 Some(v) => match filter_matches(v, f) {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => panic!("{}", e),
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
                 },
                 None => continue,
             }

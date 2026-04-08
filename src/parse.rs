@@ -139,7 +139,10 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
                 Some(v) => match filter_matches(v, f) {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => panic!("line {}: {}", line_num + 1, e),
+                    Err(e) => {
+                        eprintln!("Error: line {}: {e}", line_num + 1);
+                        std::process::exit(1);
+                    }
                 },
                 None => continue,
             }
@@ -317,21 +320,16 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "filter type mismatch")]
-    fn parse_filter_type_mismatch_errors() {
-        let f = write_temp_jsonl(&[
-            r#"{"status": "1", "text": "string one"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "status".to_string(),
-                value: "1".to_string(),
-                filter_type: FilterType::Int,
-            }),
+    fn filter_matches_type_mismatch_returns_err() {
+        let filter = ParsedFilter {
+            key: "status".to_string(),
+            value: "1".to_string(),
+            filter_type: FilterType::Int,
         };
-        parse_jsonl(f.path(), &opts);
+        let json_val: Value = Value::String("1".to_string());
+        let result = filter_matches(&json_val, &filter);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("filter type mismatch"));
     }
 
     #[test]

@@ -25,6 +25,14 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
+fn compute_total_duration(entries: &[Transcription]) -> f64 {
+    if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
+        last.end - first.start
+    } else {
+        0.0
+    }
+}
+
 fn format_duration(secs: f64) -> String {
     let total = secs as u64;
     let h = total / 3600;
@@ -48,11 +56,7 @@ pub fn print_report(
     sequences: &[RepeatedSequence],
     top_n: usize,
 ) {
-    let total_duration = if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-        last.end - first.start
-    } else {
-        0.0
-    };
+    let total_duration = compute_total_duration(entries);
 
     // Header
     println!();
@@ -221,11 +225,7 @@ pub fn print_json_report(
     ngrams: &[NgramResult],
     sequences: &[RepeatedSequence],
 ) {
-    let total_duration = if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-        last.end - first.start
-    } else {
-        0.0
-    };
+    let total_duration = compute_total_duration(entries);
 
     let report = Report {
         file_path,
@@ -237,5 +237,8 @@ pub fn print_json_report(
         repeated_sequences: sequences,
     };
 
-    println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).expect("failed to serialize report")
+    );
 }

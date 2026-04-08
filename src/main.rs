@@ -8,7 +8,13 @@ mod similarity;
 use std::path::Path;
 use std::time::Instant;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(Clone, Debug, ValueEnum)]
+enum Format {
+    Human,
+    Json,
+}
 
 #[derive(Parser)]
 #[command(name = "repetition_analyzer")]
@@ -50,9 +56,9 @@ struct Cli {
     #[arg(long, default_value_t = 2)]
     min_seq_occurrences: usize,
 
-    /// Output format: "human" or "json"
-    #[arg(long, default_value = "human")]
-    format: String,
+    /// Output format
+    #[arg(long, value_enum, default_value_t = Format::Human)]
+    format: Format,
 }
 
 fn main() {
@@ -115,8 +121,8 @@ fn main() {
     eprintln!("Analysis complete in {:.2}s", elapsed.as_secs_f64());
 
     // Print report
-    match cli.format.as_str() {
-        "json" => report::print_json_report(
+    match cli.format {
+        Format::Json => report::print_json_report(
             &cli.file,
             &entries,
             &duplicates,
@@ -124,7 +130,7 @@ fn main() {
             &ngram_results,
             &repeated_seqs,
         ),
-        _ => report::print_report(
+        Format::Human => report::print_report(
             &cli.file,
             &entries,
             &duplicates,

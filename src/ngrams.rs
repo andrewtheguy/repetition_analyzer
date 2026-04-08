@@ -194,4 +194,17 @@ mod tests {
         let results = extract_ngrams(&[], 3, 5, 2, false);
         assert!(results.is_empty());
     }
+
+    #[test]
+    fn includes_entry_ids_when_requested() {
+        let entries = vec![
+            Transcription { index: 0, id: "aaa".to_string(), text: "the quick brown fox".to_string() },
+            Transcription { index: 1, id: "bbb".to_string(), text: "the quick brown dog".to_string() },
+            Transcription { index: 2, id: "ccc".to_string(), text: "something else entirely".to_string() },
+        ];
+        let results = extract_ngrams(&entries, 3, 3, 2, true);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].ngram, "the quick brown");
+        assert_eq!(results[0].entry_ids, vec!["aaa", "bbb"]);
+    }
 }

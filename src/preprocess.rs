@@ -65,8 +65,8 @@ pub fn run_preprocess(config: &PreprocessConfig) -> Result<(), String> {
             continue;
         }
 
-        serde_json::to_writer(&mut stdout, &obj).map_err(|e| format!("failed to serialize entry: {e}"))?;
-        writeln!(stdout).map_err(|e| format!("failed to write newline: {e}"))?;
+        serde_json::to_writer(&mut stdout, &obj).map_err(|e| format!("Failed to serialize entry: {e}"))?;
+        writeln!(stdout).map_err(|e| format!("Failed to write newline: {e}"))?;
         count += 1;
     }
 

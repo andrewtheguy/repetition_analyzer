@@ -168,7 +168,7 @@ pub fn run_enrich(config: &EnrichConfig) -> Result<(), String> {
     println!(
         "{}",
         serde_json::to_string_pretty(&result_json)
-            .map_err(|e| format!("failed to serialize enriched result: {e}"))?
+            .map_err(|e| format!("Failed to serialize enriched result: {e}"))?
     );
     Ok(())
 }

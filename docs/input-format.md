@@ -72,15 +72,15 @@ Valid entries are assigned sequential indices starting at 0, in file order. Thes
 
 ## Optional: Timestamps (for enrichment)
 
-Timestamp fields are not used during analysis. They are only relevant when using the `enrich` subcommand to post-process results. The default timestamp keys are `start`, `end`, `start_formatted`, and `end_formatted`, but these are configurable.
+Timestamp fields are not used during analysis. They are only relevant when using the `enrich` subcommand to post-process results. The default timestamp keys are `start_ms`, `end_ms`, `start_formatted`, and `end_formatted`, but these are configurable.
 
 ## Example
 
 ```jsonl
-{"type": "transcription", "text": "Good morning everyone", "start": 0.0, "end": 2.5, "start_formatted": "00:00:00", "end_formatted": "00:00:02"}
+{"type": "transcription", "text": "Good morning everyone", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
 {"type": "metadata", "duration": 3600}
-{"type": "transcription", "text": "Welcome to the broadcast", "start": 2.5, "end": 5.0, "start_formatted": "00:00:02", "end_formatted": "00:00:05"}
-{"type": "transcription", "text": "Good morning everyone", "start": 5.0, "end": 7.5, "start_formatted": "00:00:05", "end_formatted": "00:00:07"}
+{"type": "transcription", "text": "Welcome to the broadcast", "start_ms": 2500, "end_ms": 5000, "start_formatted": "00:00:02.500", "end_formatted": "00:00:05.000"}
+{"type": "transcription", "text": "Good morning everyone", "start_ms": 5000, "end_ms": 7500, "start_formatted": "00:00:05.000", "end_formatted": "00:00:07.500"}
 ```
 
 With `--filter type=transcription`, the metadata line is skipped, and the three transcription entries receive indices 0, 1, and 2.

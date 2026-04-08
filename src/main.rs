@@ -153,7 +153,7 @@ enum Command {
         #[arg(long)]
         filter: Option<String>,
 
-        /// Insert a UUID v4 into each entry under this key name
+        /// Insert a UUID v7 into each entry under this key name
         #[arg(long)]
         new_id_key: Option<String>,
     },

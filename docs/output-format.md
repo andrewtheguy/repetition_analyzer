@@ -37,7 +37,6 @@ Produces a single JSON object on stdout:
 
 - `id_column`: The `--id-key` value if provided (e.g., `"uid"`), or `null` when using line numbers.
 - `id_from_line_number`: `true` when IDs are auto-generated from file line numbers, `false` when sourced from a JSONL column.
-```
 
 ### `exact_duplicates`
 

@@ -1,6 +1,7 @@
 mod enrich;
 mod error;
 mod exact;
+mod extract;
 mod near_sequences;
 mod ngrams;
 mod parse;
@@ -8,6 +9,7 @@ mod preprocess;
 mod report;
 mod sequences;
 mod similarity;
+mod stations;
 
 use std::path::Path;
 use std::time::Instant;
@@ -101,7 +103,7 @@ enum Command {
         result: String,
     },
 
-    /// [Experimental] Extract one representative per near-duplicate cluster (last occurrence) with timestamps
+    /// Segment entries into contiguous unique/repeated ranges based on all repetition analyses
     ExtractUnique {
         /// Path to the preprocessed CSV source file
         #[arg(long)]
@@ -110,6 +112,29 @@ enum Command {
         /// Path to the JSON result file from analyze
         #[arg(long)]
         result: String,
+    },
+
+    /// Extract segments to files, optionally classifying repeated segments by station
+    ExtractSegments {
+        /// Path to the segments JSON from extract-unique
+        #[arg(long)]
+        segments: String,
+
+        /// Station-specific classifier for repeated segments
+        #[arg(long, value_enum)]
+        station: Option<stations::Station>,
+
+        /// Minimum entry count to include
+        #[arg(long, default_value_t = 3)]
+        min_entries: usize,
+
+        /// Segments with >= this many entries go to individual files
+        #[arg(long, default_value_t = 10)]
+        long_threshold: usize,
+
+        /// Output directory
+        #[arg(long)]
+        outdir: String,
     },
 
     /// Preprocess a JSONL file into CSV: filter, normalize field names, and ensure unique IDs
@@ -182,6 +207,19 @@ fn main() {
         Command::ExtractUnique { source, result } => {
             enrich::run_extract_unique(&enrich::EnrichConfig { source, result })
         }
+        Command::ExtractSegments {
+            segments,
+            station,
+            min_entries,
+            long_threshold,
+            outdir,
+        } => extract::run_extract_segments(&extract::ExtractConfig {
+            segments,
+            station,
+            min_entries,
+            long_threshold,
+            outdir,
+        }),
         Command::Preprocess {
             file,
             text_key,

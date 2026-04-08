@@ -88,3 +88,58 @@ pub fn similarity_above_threshold(a: &str, b: &str, threshold: f64) -> Option<f6
     let ratio = 1.0 - (dist as f64 / max_len as f64);
     Some(ratio)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_basic() {
+        assert_eq!(normalize("Hello, World!"), "hello world");
+        assert_eq!(normalize("  multiple   spaces  "), "multiple spaces");
+        assert_eq!(normalize("it's a test"), "it's a test");
+        assert_eq!(normalize("$100 & 50%"), "100 50");
+    }
+
+    #[test]
+    fn levenshtein_identical() {
+        assert_eq!(levenshtein_bounded(b"abc", b"abc", 10), Some(0));
+    }
+
+    #[test]
+    fn levenshtein_empty() {
+        assert_eq!(levenshtein_bounded(b"", b"abc", 10), Some(3));
+        assert_eq!(levenshtein_bounded(b"abc", b"", 10), Some(3));
+        assert_eq!(levenshtein_bounded(b"", b"", 10), Some(0));
+    }
+
+    #[test]
+    fn levenshtein_single_edit() {
+        assert_eq!(levenshtein_bounded(b"kitten", b"sitten", 10), Some(1));
+        assert_eq!(levenshtein_bounded(b"abc", b"abcd", 10), Some(1));
+    }
+
+    #[test]
+    fn levenshtein_bounded_returns_none() {
+        assert_eq!(levenshtein_bounded(b"abc", b"xyz", 1), None);
+        assert_eq!(levenshtein_bounded(b"short", b"very long string", 3), None);
+    }
+
+    #[test]
+    fn similarity_above_threshold_matches() {
+        // "abc" vs "abd" — 1 edit out of 3 chars = 0.667 similarity
+        assert!(similarity_above_threshold("abc", "abd", 0.5).is_some());
+        assert!(similarity_above_threshold("abc", "abd", 0.8).is_none());
+    }
+
+    #[test]
+    fn similarity_identical() {
+        let r = similarity_above_threshold("hello world", "hello world", 0.99);
+        assert_eq!(r, Some(1.0));
+    }
+
+    #[test]
+    fn similarity_empty_strings() {
+        assert_eq!(similarity_above_threshold("", "", 0.5), Some(1.0));
+    }
+}

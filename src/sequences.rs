@@ -161,7 +161,7 @@ mod tests {
         // Entries 0,1 form one block and 2 can't form another (only 1 entry left)
         // But individual entries repeat, so length-1 wouldn't apply (min_len=2)
         // The 2-entry window "same line|same line" appears at 0 and 1, but they overlap
-        assert!(seqs.is_empty() || seqs[0].occurrences.len() <= 1);
+        assert!(seqs.is_empty());
     }
 
     #[test]

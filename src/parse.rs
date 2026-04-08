@@ -4,6 +4,66 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilterType {
+    Str,
+    Bool,
+    Int,
+    Float,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedFilter {
+    pub key: String,
+    pub value: String,
+    pub filter_type: FilterType,
+}
+
+/// Check whether a JSON value matches a filter using its explicit type.
+pub fn filter_matches(json_val: &Value, filter: &ParsedFilter) -> bool {
+    match filter.filter_type {
+        FilterType::Str => matches!(json_val, Value::String(s) if s == &filter.value),
+        FilterType::Bool => {
+            let expected: bool = filter.value.parse().expect("invalid bool filter value");
+            matches!(json_val, Value::Bool(b) if *b == expected)
+        }
+        FilterType::Int => {
+            let expected: i64 = filter.value.parse().expect("invalid int filter value");
+            json_val.as_i64() == Some(expected)
+        }
+        FilterType::Float => {
+            let expected: f64 = filter.value.parse().expect("invalid float filter value");
+            json_val.as_f64() == Some(expected)
+        }
+    }
+}
+
+/// Parse `--filter key=value` or `--filter key:type=value` where type is str, bool, int, float.
+pub fn parse_filter(filter: &Option<String>) -> Option<ParsedFilter> {
+    let f = filter.as_ref()?;
+    let (key_part, value) = f
+        .split_once('=')
+        .expect("--filter must be in key=value or key:type=value format");
+    let (key, filter_type) = match key_part.split_once(':') {
+        Some((k, t)) => {
+            let ft = match t {
+                "str" => FilterType::Str,
+                "bool" => FilterType::Bool,
+                "int" => FilterType::Int,
+                "float" => FilterType::Float,
+                _ => panic!("unknown filter type '{t}', expected str, bool, int, or float"),
+            };
+            (k, ft)
+        }
+        None => (key_part, FilterType::Str),
+    };
+    Some(ParsedFilter {
+        key: key.to_string(),
+        value: value.to_string(),
+        filter_type,
+    })
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Transcription {
     pub index: usize,
@@ -14,8 +74,7 @@ pub struct Transcription {
 pub struct ParseOptions {
     pub text_key: String,
     pub id_key: Option<String>,
-    pub filter_key: Option<String>,
-    pub filter_value: Option<String>,
+    pub filter: Option<ParsedFilter>,
 }
 
 pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
@@ -32,9 +91,9 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
         };
 
         // Apply filter if configured
-        if let (Some(fk), Some(fv)) = (&opts.filter_key, &opts.filter_value) {
-            match obj.get(fk) {
-                Some(Value::String(s)) if s == fv => {}
+        if let Some(f) = &opts.filter {
+            match obj.get(&f.key) {
+                Some(v) if filter_matches(v, f) => {}
                 _ => continue,
             }
         }
@@ -86,8 +145,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries.len(), 2);
@@ -103,8 +161,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "content".to_string(),
             id_key: None,
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries.len(), 1);
@@ -117,8 +174,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries.len(), 1);
@@ -135,8 +191,11 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter_key: Some("type".to_string()),
-            filter_value: Some("transcription".to_string()),
+            filter: Some(ParsedFilter {
+                key: "type".to_string(),
+                value: "transcription".to_string(),
+                filter_type: FilterType::Str,
+            }),
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries.len(), 2);
@@ -150,8 +209,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries[0].id, "2"); // line 2 (1-indexed)
@@ -163,8 +221,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: Some("uid".to_string()),
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries[0].id, "abc-123");
@@ -176,8 +233,7 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter_key: None,
-            filter_value: None,
+            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts);
         assert_eq!(entries.len(), 1);

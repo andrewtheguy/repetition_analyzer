@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use parse::parse_filter;
 
 #[derive(Clone, Debug, ValueEnum)]
 enum Format {
@@ -122,18 +123,6 @@ enum Command {
     },
 }
 
-fn parse_filter(filter: &Option<String>) -> (Option<String>, Option<String>) {
-    match filter {
-        Some(f) => {
-            let (k, v) = f
-                .split_once('=')
-                .expect("--filter must be in key=value format");
-            (Some(k.to_string()), Some(v.to_string()))
-        }
-        None => (None, None),
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
 
@@ -217,12 +206,10 @@ fn run_analyze(
     // Parse
     let t = Instant::now();
     eprintln!("Parsing {}...", file);
-    let (filter_key, filter_value) = parse_filter(filter);
     let parse_opts = parse::ParseOptions {
         text_key: text_key.to_string(),
         id_key: id_key.clone(),
-        filter_key,
-        filter_value,
+        filter: parse_filter(filter),
     };
     let entries = parse::parse_jsonl(Path::new(file), &parse_opts);
     eprintln!(

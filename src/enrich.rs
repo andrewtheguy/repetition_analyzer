@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use crate::parse::{filter_matches, parse_filter, ParsedFilter};
+
 struct TimestampInfo {
     start: Option<f64>,
     end: Option<f64>,
@@ -14,8 +16,7 @@ struct TimestampInfo {
 fn build_timestamp_lookup(
     source_path: &Path,
     text_key: &str,
-    filter_key: &Option<String>,
-    filter_value: &Option<String>,
+    filter: &Option<ParsedFilter>,
     start_key: &str,
     end_key: &str,
     start_formatted_key: &str,
@@ -33,9 +34,9 @@ fn build_timestamp_lookup(
         };
 
         // Apply filter
-        if let (Some(fk), Some(fv)) = (filter_key, filter_value) {
-            match obj.get(fk) {
-                Some(Value::String(s)) if s == fv => {}
+        if let Some(f) = filter {
+            match obj.get(&f.key) {
+                Some(v) if filter_matches(v, f) => {}
                 _ => continue,
             }
         }
@@ -140,21 +141,12 @@ pub fn run_enrich(
     text_key: &str,
     filter: &Option<String>,
 ) {
-    let (filter_key, filter_value) = match filter {
-        Some(f) => {
-            let (k, v) = f
-                .split_once('=')
-                .expect("--filter must be in key=value format");
-            (Some(k.to_string()), Some(v.to_string()))
-        }
-        None => (None, None),
-    };
+    let parsed_filter = parse_filter(filter);
 
     let lookup = build_timestamp_lookup(
         Path::new(source),
         text_key,
-        &filter_key,
-        &filter_value,
+        &parsed_filter,
         start_key,
         end_key,
         start_formatted_key,

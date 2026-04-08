@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::error::AppError;
@@ -18,40 +18,37 @@ struct EntryInfo {
     id: Option<String>,
 }
 
-/// Build lookup from a preprocessed JSONL file (canonical format).
+/// CSV column indices: id,text,start_ms,end_ms,start_formatted,end_formatted
+const COL_ID: usize = 0;
+const COL_START_MS: usize = 2;
+const COL_END_MS: usize = 3;
+const COL_START_FMT: usize = 4;
+const COL_END_FMT: usize = 5;
+
+fn non_empty(s: &str) -> Option<String> {
+    if s.is_empty() { None } else { Some(s.to_string()) }
+}
+
+/// Build lookup from a preprocessed CSV file (canonical format).
 fn build_entry_lookup(source: &str) -> crate::error::Result<Vec<EntryInfo>> {
     let file = File::open(Path::new(source)).map_err(|e| AppError::FileOpen {
         path: source.to_string(),
         source: e,
     })?;
-    let reader = BufReader::new(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(BufReader::new(file));
     let mut entries = Vec::new();
 
-    for (line_num, line) in reader.lines().enumerate() {
-        let line = line.map_err(|e| AppError::LineRead {
-            line: line_num + 1,
-            source: e,
-        })?;
-        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::InvalidJson {
-            line: line_num + 1,
-            source: e,
-        })?;
+    for (line_num, result) in rdr.records().enumerate() {
+        let record = result.map_err(|e| AppError::Generic(format!("line {}: {e}", line_num + 1)))?;
 
         entries.push(EntryInfo {
-            start_ms: obj.get("start_ms").and_then(|v| v.as_i64()),
-            end_ms: obj.get("end_ms").and_then(|v| v.as_i64()),
-            start_formatted: obj
-                .get("start_formatted")
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            end_formatted: obj
-                .get("end_formatted")
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            id: obj
-                .get("id")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+            id: record.get(COL_ID).and_then(non_empty),
+            start_ms: record.get(COL_START_MS).and_then(|s| s.parse().ok()),
+            end_ms: record.get(COL_END_MS).and_then(|s| s.parse().ok()),
+            start_formatted: record.get(COL_START_FMT).and_then(non_empty),
+            end_formatted: record.get(COL_END_FMT).and_then(non_empty),
         });
     }
 

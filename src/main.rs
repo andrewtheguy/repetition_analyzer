@@ -44,9 +44,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Analyze a preprocessed JSONL file for repeated text
+    /// Analyze a preprocessed CSV file for repeated text
     Analyze {
-        /// Path to the preprocessed JSONL file
+        /// Path to the preprocessed CSV file
         file: String,
 
         /// Minimum n-gram size
@@ -90,9 +90,9 @@ enum Command {
         format: Format,
     },
 
-    /// Enrich a JSON result file with timestamps from the preprocessed JSONL source
+    /// Enrich a JSON result file with timestamps from the preprocessed CSV source
     Enrich {
-        /// Path to the preprocessed JSONL source file
+        /// Path to the preprocessed CSV source file
         #[arg(long)]
         source: String,
 
@@ -103,7 +103,7 @@ enum Command {
 
     /// [Experimental] Extract one representative per near-duplicate cluster (last occurrence) with timestamps
     ExtractUnique {
-        /// Path to the preprocessed JSONL source file
+        /// Path to the preprocessed CSV source file
         #[arg(long)]
         source: String,
 
@@ -112,7 +112,7 @@ enum Command {
         result: String,
     },
 
-    /// Preprocess a JSONL file: filter, normalize field names, and ensure unique IDs
+    /// Preprocess a JSONL file into CSV: filter, normalize field names, and ensure unique IDs
     Preprocess {
         /// Path to the JSONL file
         file: String,
@@ -215,7 +215,7 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
     // Parse
     let t = Instant::now();
     eprintln!("Parsing {}...", config.file);
-    let entries = parse::parse_jsonl(Path::new(&config.file))?;
+    let entries = parse::parse_csv(Path::new(&config.file))?;
     eprintln!(
         "Loaded {} entries ({:.2}s)",
         entries.len(),

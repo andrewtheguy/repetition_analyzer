@@ -1,6 +1,6 @@
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use uuid::Uuid;
 
@@ -18,15 +18,7 @@ pub struct PreprocessConfig {
     pub filter: Option<String>,
 }
 
-/// Canonical output field names.
-const OUT_TEXT: &str = "text";
-const OUT_ID: &str = "id";
-const OUT_START_MS: &str = "start_ms";
-const OUT_END_MS: &str = "end_ms";
-const OUT_START_FMT: &str = "start_formatted";
-const OUT_END_FMT: &str = "end_formatted";
-
-fn ms_to_formatted(ms: i64) -> String {
+pub fn ms_to_formatted(ms: i64) -> String {
     let total_secs = ms / 1000;
     let millis = ms % 1000;
     let hours = total_secs / 3600;
@@ -35,8 +27,7 @@ fn ms_to_formatted(ms: i64) -> String {
     format!("{hours:02}:{minutes:02}:{seconds:02}.{millis:03}")
 }
 
-fn formatted_to_ms(s: &str) -> Option<i64> {
-    // Parse HH:MM:SS.mmm
+pub fn formatted_to_ms(s: &str) -> Option<i64> {
     let (hms, millis_str) = s.split_once('.')?;
     let parts: Vec<&str> = hms.split(':').collect();
     if parts.len() != 3 {
@@ -49,11 +40,21 @@ fn formatted_to_ms(s: &str) -> Option<i64> {
     Some((hours * 3600 + minutes * 60 + seconds) * 1000 + millis)
 }
 
+/// Canonical row produced by preprocessing.
+struct CanonicalRow {
+    id: String,
+    text: String,
+    start_ms: String,
+    end_ms: String,
+    start_formatted: String,
+    end_formatted: String,
+}
+
 fn process_entry(
     obj: &Value,
     config: &PreprocessConfig,
     filter: &Option<ParsedFilter>,
-) -> Result<Option<Value>, String> {
+) -> Result<Option<CanonicalRow>, String> {
     // Apply filter
     if let Some(f) = filter {
         match obj.get(&f.key) {
@@ -68,13 +69,9 @@ fn process_entry(
 
     // Skip entries missing the text key
     let text = match obj.get(&config.text_key).and_then(|v| v.as_str()) {
-        Some(s) => s,
+        Some(s) => s.to_string(),
         None => return Ok(None),
     };
-
-    // Build canonical output
-    let mut out = Map::new();
-    out.insert(OUT_TEXT.to_string(), Value::String(text.to_string()));
 
     // ID: use existing key or generate UUIDv7.
     // If --id-key is set, every entry must have a non-null value for it.
@@ -86,57 +83,45 @@ fn process_entry(
         },
         None => Uuid::now_v7().to_string(),
     };
-    out.insert(OUT_ID.to_string(), Value::String(id));
 
     // Timestamps: use what's available, convert to fill gaps
-    let start_ms = obj.get(&config.start_ms_key).and_then(|v| v.as_i64());
-    let end_ms = obj.get(&config.end_ms_key).and_then(|v| v.as_i64());
-    let start_fmt = obj
+    let start_ms_val = obj.get(&config.start_ms_key).and_then(|v| v.as_i64());
+    let end_ms_val = obj.get(&config.end_ms_key).and_then(|v| v.as_i64());
+    let start_fmt_val = obj
         .get(&config.start_formatted_key)
         .and_then(|v| v.as_str());
-    let end_fmt = obj
+    let end_fmt_val = obj
         .get(&config.end_formatted_key)
         .and_then(|v| v.as_str());
 
-    // start_ms / start_formatted
-    match (start_ms, start_fmt) {
-        (Some(ms), Some(fmt)) => {
-            out.insert(OUT_START_MS.to_string(), Value::from(ms));
-            out.insert(OUT_START_FMT.to_string(), Value::from(fmt));
-        }
-        (Some(ms), None) => {
-            out.insert(OUT_START_MS.to_string(), Value::from(ms));
-            out.insert(OUT_START_FMT.to_string(), Value::from(ms_to_formatted(ms)));
-        }
-        (None, Some(fmt)) => {
-            if let Some(ms) = formatted_to_ms(fmt) {
-                out.insert(OUT_START_MS.to_string(), Value::from(ms));
-            }
-            out.insert(OUT_START_FMT.to_string(), Value::from(fmt));
-        }
-        (None, None) => {}
-    }
+    let (start_ms, start_formatted) = match (start_ms_val, start_fmt_val) {
+        (Some(ms), Some(fmt)) => (ms.to_string(), fmt.to_string()),
+        (Some(ms), None) => (ms.to_string(), ms_to_formatted(ms)),
+        (None, Some(fmt)) => (
+            formatted_to_ms(fmt).map(|ms| ms.to_string()).unwrap_or_default(),
+            fmt.to_string(),
+        ),
+        (None, None) => (String::new(), String::new()),
+    };
 
-    // end_ms / end_formatted
-    match (end_ms, end_fmt) {
-        (Some(ms), Some(fmt)) => {
-            out.insert(OUT_END_MS.to_string(), Value::from(ms));
-            out.insert(OUT_END_FMT.to_string(), Value::from(fmt));
-        }
-        (Some(ms), None) => {
-            out.insert(OUT_END_MS.to_string(), Value::from(ms));
-            out.insert(OUT_END_FMT.to_string(), Value::from(ms_to_formatted(ms)));
-        }
-        (None, Some(fmt)) => {
-            if let Some(ms) = formatted_to_ms(fmt) {
-                out.insert(OUT_END_MS.to_string(), Value::from(ms));
-            }
-            out.insert(OUT_END_FMT.to_string(), Value::from(fmt));
-        }
-        (None, None) => {}
-    }
+    let (end_ms, end_formatted) = match (end_ms_val, end_fmt_val) {
+        (Some(ms), Some(fmt)) => (ms.to_string(), fmt.to_string()),
+        (Some(ms), None) => (ms.to_string(), ms_to_formatted(ms)),
+        (None, Some(fmt)) => (
+            formatted_to_ms(fmt).map(|ms| ms.to_string()).unwrap_or_default(),
+            fmt.to_string(),
+        ),
+        (None, None) => (String::new(), String::new()),
+    };
 
-    Ok(Some(Value::Object(out)))
+    Ok(Some(CanonicalRow {
+        id,
+        text,
+        start_ms,
+        end_ms,
+        start_formatted,
+        end_formatted,
+    }))
 }
 
 pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
@@ -146,7 +131,9 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
         source: e,
     })?;
     let reader = BufReader::new(file);
-    let mut stdout = std::io::BufWriter::new(std::io::stdout().lock());
+    let stdout = std::io::BufWriter::new(std::io::stdout().lock());
+    let mut wtr = csv::Writer::from_writer(stdout);
+    wtr.write_record(["id", "text", "start_ms", "end_ms", "start_formatted", "end_formatted"])?;
     let mut count = 0usize;
 
     for (line_num, line) in reader.lines().enumerate() {
@@ -160,9 +147,15 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
         };
 
         match process_entry(&obj, config, &parsed_filter) {
-            Ok(Some(canonical)) => {
-                serde_json::to_writer(&mut stdout, &canonical)?;
-                writeln!(stdout)?;
+            Ok(Some(row)) => {
+                wtr.write_record([
+                    &row.id,
+                    &row.text,
+                    &row.start_ms,
+                    &row.end_ms,
+                    &row.start_formatted,
+                    &row.end_formatted,
+                ])?;
                 count += 1;
             }
             Ok(None) => continue,
@@ -175,7 +168,7 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
         }
     }
 
-    drop(stdout);
+    wtr.flush()?;
     eprintln!("Wrote {count} entries");
     Ok(())
 }
@@ -197,7 +190,7 @@ mod tests {
         }
     }
 
-    fn apply(json: &str, config: &PreprocessConfig, filter: &Option<ParsedFilter>) -> Option<Value> {
+    fn apply(json: &str, config: &PreprocessConfig, filter: &Option<ParsedFilter>) -> Option<CanonicalRow> {
         let obj: Value = serde_json::from_str(json).unwrap();
         process_entry(&obj, config, filter).unwrap()
     }
@@ -208,7 +201,7 @@ mod tests {
         let filter = parse_filter(&Some("type=transcript".to_string()));
         assert!(apply(r#"{"type": "meta", "text": "ignored"}"#, &config, &filter).is_none());
         let kept = apply(r#"{"type": "transcript", "text": "kept"}"#, &config, &filter);
-        assert_eq!(kept.unwrap()["text"], "kept");
+        assert_eq!(kept.unwrap().text, "kept");
     }
 
     #[test]
@@ -216,12 +209,9 @@ mod tests {
         let config = default_config();
         let r0 = apply(r#"{"text": "hello"}"#, &config, &None).unwrap();
         let r1 = apply(r#"{"text": "world"}"#, &config, &None).unwrap();
-
-        let id0 = r0["id"].as_str().unwrap();
-        let id1 = r1["id"].as_str().unwrap();
-        assert!(Uuid::parse_str(id0).is_ok());
-        assert!(Uuid::parse_str(id1).is_ok());
-        assert_ne!(id0, id1);
+        assert!(Uuid::parse_str(&r0.id).is_ok());
+        assert!(Uuid::parse_str(&r1.id).is_ok());
+        assert_ne!(r0.id, r1.id);
     }
 
     #[test]
@@ -229,7 +219,7 @@ mod tests {
         let mut config = default_config();
         config.id_key = Some("uid".to_string());
         let result = apply(r#"{"text": "hello", "uid": "abc-123"}"#, &config, &None).unwrap();
-        assert_eq!(result["id"], "abc-123");
+        assert_eq!(result.id, "abc-123");
     }
 
     #[test]
@@ -240,20 +230,6 @@ mod tests {
     }
 
     #[test]
-    fn preprocess_outputs_canonical_fields() {
-        let config = default_config();
-        let result = apply(
-            r#"{"text": "hi", "start_ms": 100, "end_ms": 200, "start_formatted": "0:00:00.100", "end_formatted": "0:00:00.200", "extra": "dropped"}"#,
-            &config,
-            &None,
-        ).unwrap();
-        assert_eq!(result["text"], "hi");
-        assert_eq!(result["start_ms"], 100);
-        assert_eq!(result["end_ms"], 200);
-        assert!(result.get("extra").is_none());
-    }
-
-    #[test]
     fn preprocess_converts_ms_to_formatted() {
         let config = default_config();
         let result = apply(
@@ -261,8 +237,8 @@ mod tests {
             &config,
             &None,
         ).unwrap();
-        assert_eq!(result["start_formatted"], "00:00:07.552");
-        assert_eq!(result["end_formatted"], "25:01:01.001");
+        assert_eq!(result.start_formatted, "00:00:07.552");
+        assert_eq!(result.end_formatted, "25:01:01.001");
     }
 
     #[test]
@@ -273,8 +249,8 @@ mod tests {
             &config,
             &None,
         ).unwrap();
-        assert_eq!(result["start_ms"], 5405250);
-        assert_eq!(result["end_ms"], 7200000);
+        assert_eq!(result.start_ms, "5405250");
+        assert_eq!(result.end_ms, "7200000");
     }
 
     #[test]
@@ -294,10 +270,10 @@ mod tests {
             &config,
             &None,
         ).unwrap();
-        assert_eq!(result["text"], "hi");
-        assert_eq!(result["id"], "x1");
-        assert_eq!(result["start_ms"], 0);
-        assert_eq!(result["end_ms"], 100);
+        assert_eq!(result.text, "hi");
+        assert_eq!(result.id, "x1");
+        assert_eq!(result.start_ms, "0");
+        assert_eq!(result.end_ms, "100");
     }
 
     #[test]

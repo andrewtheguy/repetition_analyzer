@@ -20,17 +20,15 @@ pub struct Segment {
     end_index: usize,
     pub entry_count: usize,
     pub texts: Vec<String>,
-    pub start_ms: Option<i64>,
-    pub end_ms: Option<i64>,
+    pub start_ms: i64,
+    pub end_ms: i64,
     pub start_formatted: Option<String>,
     pub end_formatted: Option<String>,
 }
 
 impl Segment {
     pub fn duration_secs(&self) -> f64 {
-        let s = self.start_ms.unwrap_or(0);
-        let e = self.end_ms.unwrap_or(0);
-        (e - s) as f64 / 1000.0
+        (self.end_ms - self.start_ms) as f64 / 1000.0
     }
 
     pub fn text_blob(&self) -> String {

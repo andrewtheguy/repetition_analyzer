@@ -206,21 +206,21 @@ fn build_segment(lookup: &[EntryInfo], start: usize, end: usize, is_repeated: bo
     seg.insert("texts".to_string(), Value::Array(texts));
 
     // Timestamps: start from first entry, end from last entry
-    if let Some(first) = lookup.get(start) {
-        if let Some(s) = first.start_ms {
-            seg.insert("start_ms".to_string(), Value::from(s));
-        }
-        if let Some(sf) = &first.start_formatted {
-            seg.insert("start_formatted".to_string(), Value::from(sf.clone()));
-        }
+    let first = lookup.get(start);
+    let last = lookup.get(end);
+    seg.insert(
+        "start_ms".to_string(),
+        Value::from(first.and_then(|e| e.start_ms).unwrap_or(0)),
+    );
+    seg.insert(
+        "end_ms".to_string(),
+        Value::from(last.and_then(|e| e.end_ms).unwrap_or(0)),
+    );
+    if let Some(sf) = first.and_then(|e| e.start_formatted.as_ref()) {
+        seg.insert("start_formatted".to_string(), Value::from(sf.clone()));
     }
-    if let Some(last) = lookup.get(end) {
-        if let Some(e) = last.end_ms {
-            seg.insert("end_ms".to_string(), Value::from(e));
-        }
-        if let Some(ef) = &last.end_formatted {
-            seg.insert("end_formatted".to_string(), Value::from(ef.clone()));
-        }
+    if let Some(ef) = last.and_then(|e| e.end_formatted.as_ref()) {
+        seg.insert("end_formatted".to_string(), Value::from(ef.clone()));
     }
 
     Value::Object(seg)

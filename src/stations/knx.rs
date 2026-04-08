@@ -1,4 +1,4 @@
-//! KNX 97.1 FM Los Angeles — segment classifier.
+//! KNX 97.1 FM Los Angeles — segment classifier (work in progress).
 
 use std::sync::LazyLock;
 
@@ -143,7 +143,6 @@ pub fn classify(seg: &Segment) -> String {
         "do you think",
         "we talked about",
         "we appreciate",
-        "middle east",
         "climate scientist",
     ];
     if phrase_count(&blob, INTERVIEW) >= 2 {

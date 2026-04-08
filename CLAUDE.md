@@ -1,2 +1,3 @@
-- No backward compatibility. Delete unused code outright — no `_unused` renames, no re-exports, no `// removed` comments.
+- No backward compatibility. 
+- Delete unused code outright — no `_unused` renames, no re-exports, no `// removed` comments.
 - Run cargo clippy and cargo test with the new code to ensure it works and is clean.

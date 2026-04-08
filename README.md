@@ -11,7 +11,7 @@ cargo build --release
 ./target/release/repetition_analyzer analyze data.jsonl
 
 # Filter to specific entry types
-./target/release/repetition_analyzer analyze --filter type=transcription data.jsonl
+./target/release/repetition_analyzer analyze --filter type=transcript data.jsonl
 
 # Use a custom text field
 ./target/release/repetition_analyzer analyze --text-key content data.jsonl
@@ -23,7 +23,7 @@ cargo build --release
 ./target/release/repetition_analyzer enrich --source data.jsonl --result result.json > enriched.json
 
 # Preprocess: filter entries and optionally insert UUIDs
-./target/release/repetition_analyzer preprocess data.jsonl --filter type=transcription --new-id-key uuid_id > filtered.jsonl
+./target/release/repetition_analyzer preprocess data.jsonl --filter type=transcript --new-id-key uuid_id > filtered.jsonl
 ```
 
 ## Subcommands

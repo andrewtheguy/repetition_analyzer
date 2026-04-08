@@ -103,9 +103,9 @@ mod tests {
 
     #[test]
     fn preprocess_filters_entries() {
-        let filter = parse_filter(&Some("type=transcription".to_string()));
+        let filter = parse_filter(&Some("type=transcript".to_string()));
         assert!(apply(r#"{"type": "meta", "text": "ignored"}"#, "text", &filter, &None).is_none());
-        let kept = apply(r#"{"type": "transcription", "text": "kept"}"#, "text", &filter, &None);
+        let kept = apply(r#"{"type": "transcript", "text": "kept"}"#, "text", &filter, &None);
         assert_eq!(kept.unwrap()["text"], "kept");
     }
 

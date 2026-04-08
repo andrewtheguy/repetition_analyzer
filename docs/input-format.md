@@ -35,10 +35,10 @@ If your JSONL file contains mixed entry types, use `--filter` to select only mat
 ### String filtering (default)
 
 ```bash
---filter type=transcription
+--filter type=transcript
 ```
 
-Matches entries where the `type` field equals the string `"transcription"`. This is equivalent to `--filter type:str=transcription`.
+Matches entries where the `type` field equals the string `"transcript"`. This is equivalent to `--filter type:str=transcript`.
 
 ### Typed filtering
 
@@ -54,11 +54,11 @@ For non-string fields, specify the type with `key:type=value`:
 
 ```jsonl
 {"type": "metadata", "info": "..."}
-{"type": "transcription", "text": "Good morning everyone"}
-{"type": "transcription", "text": "Welcome to the broadcast"}
+{"type": "transcript", "text": "Good morning everyone"}
+{"type": "transcript", "text": "Welcome to the broadcast"}
 ```
 
-Use `--filter type=transcription` to process only transcription entries.
+Use `--filter type=transcript` to process only transcript entries.
 
 **Behavior:**
 
@@ -77,10 +77,10 @@ Timestamp fields are not used during analysis. They are only relevant when using
 ## Example
 
 ```jsonl
-{"type": "transcription", "text": "Good morning everyone", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
+{"type": "transcript", "text": "Good morning everyone", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
 {"type": "metadata", "duration": 3600}
-{"type": "transcription", "text": "Welcome to the broadcast", "start_ms": 2500, "end_ms": 5000, "start_formatted": "00:00:02.500", "end_formatted": "00:00:05.000"}
-{"type": "transcription", "text": "Good morning everyone", "start_ms": 5000, "end_ms": 7500, "start_formatted": "00:00:05.000", "end_formatted": "00:00:07.500"}
+{"type": "transcript", "text": "Welcome to the broadcast", "start_ms": 2500, "end_ms": 5000, "start_formatted": "00:00:02.500", "end_formatted": "00:00:05.000"}
+{"type": "transcript", "text": "Good morning everyone", "start_ms": 5000, "end_ms": 7500, "start_formatted": "00:00:05.000", "end_formatted": "00:00:07.500"}
 ```
 
-With `--filter type=transcription`, the metadata line is skipped, and the three transcription entries receive indices 0, 1, and 2.
+With `--filter type=transcript`, the metadata line is skipped, and the three transcript entries receive indices 0, 1, and 2.

@@ -110,12 +110,12 @@ enum Command {
         #[arg(long)]
         result: String,
 
-        /// JSON key for start time (seconds)
-        #[arg(long, default_value = "start")]
+        /// JSON key for start time (milliseconds)
+        #[arg(long, default_value = "start_ms")]
         start_key: String,
 
-        /// JSON key for end time (seconds)
-        #[arg(long, default_value = "end")]
+        /// JSON key for end time (milliseconds)
+        #[arg(long, default_value = "end_ms")]
         end_key: String,
 
         /// JSON key for formatted start time

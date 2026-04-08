@@ -16,8 +16,8 @@ pub struct EnrichConfig {
 }
 
 struct EntryInfo {
-    start: Option<f64>,
-    end: Option<f64>,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
     start_formatted: Option<String>,
     end_formatted: Option<String>,
     id: Option<String>,
@@ -52,8 +52,8 @@ fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryIn
         });
 
         entries.push(EntryInfo {
-            start: obj.get(&config.start_key).and_then(|v| v.as_f64()),
-            end: obj.get(&config.end_key).and_then(|v| v.as_f64()),
+            start_ms: obj.get(&config.start_key).and_then(|v| v.as_i64()),
+            end_ms: obj.get(&config.end_key).and_then(|v| v.as_i64()),
             start_formatted: obj
                 .get(&config.start_formatted_key)
                 .and_then(|v| v.as_str())
@@ -70,11 +70,11 @@ fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryIn
 }
 
 fn inject_entry_info(ts: &mut Map<String, Value>, info: &EntryInfo) {
-    if let Some(s) = info.start {
-        ts.insert("start".to_string(), Value::from(s));
+    if let Some(s) = info.start_ms {
+        ts.insert("start_ms".to_string(), Value::from(s));
     }
-    if let Some(e) = info.end {
-        ts.insert("end".to_string(), Value::from(e));
+    if let Some(e) = info.end_ms {
+        ts.insert("end_ms".to_string(), Value::from(e));
     }
     if let Some(sf) = &info.start_formatted {
         ts.insert("start_formatted".to_string(), Value::from(sf.clone()));
@@ -146,9 +146,12 @@ pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
     // Inject total_duration_secs at top level
     if let Value::Object(ref mut map) = result_json
         && let (Some(first), Some(last)) = (lookup.first(), lookup.last())
-        && let (Some(s), Some(e)) = (first.start, last.end)
+        && let (Some(s), Some(e)) = (first.start_ms, last.end_ms)
     {
-        map.insert("total_duration_secs".to_string(), Value::from(e - s));
+        map.insert(
+            "total_duration_secs".to_string(),
+            Value::from((e - s) as f64 / 1000.0),
+        );
     }
 
     enrich_value(&mut result_json, &lookup);

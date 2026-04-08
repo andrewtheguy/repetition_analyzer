@@ -29,6 +29,9 @@ pub enum AppError {
 
     #[error("line {line}: duplicate id '{id}'")]
     DuplicateId { line: usize, id: String },
+
+    #[error("{0}")]
+    Generic(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

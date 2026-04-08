@@ -131,6 +131,37 @@ enum Command {
         id_key: Option<String>,
     },
 
+    /// [Experimental] Extract one representative per near-duplicate cluster (last occurrence) with timestamps
+    ExtractUnique {
+        /// Path to the preprocessed JSONL source file
+        #[arg(long)]
+        source: String,
+
+        /// Path to the JSON result file from analyze
+        #[arg(long)]
+        result: String,
+
+        /// JSON key for start time (milliseconds)
+        #[arg(long, default_value = "start_ms")]
+        start_key: String,
+
+        /// JSON key for end time (milliseconds)
+        #[arg(long, default_value = "end_ms")]
+        end_key: String,
+
+        /// JSON key for formatted start time
+        #[arg(long, default_value = "start_formatted")]
+        start_formatted_key: String,
+
+        /// JSON key for formatted end time
+        #[arg(long, default_value = "end_formatted")]
+        end_formatted_key: String,
+
+        /// Optional JSON key to use as entry ID
+        #[arg(long)]
+        id_key: Option<String>,
+    },
+
     /// Preprocess a JSONL file: apply filters and optionally insert a UUID column
     Preprocess {
         /// Path to the JSONL file
@@ -192,6 +223,23 @@ fn main() {
             end_formatted_key,
             id_key,
         } => enrich::run_enrich(&enrich::EnrichConfig {
+            source,
+            result,
+            start_key,
+            end_key,
+            start_formatted_key,
+            end_formatted_key,
+            id_key,
+        }),
+        Command::ExtractUnique {
+            source,
+            result,
+            start_key,
+            end_key,
+            start_formatted_key,
+            end_formatted_key,
+            id_key,
+        } => enrich::run_extract_unique(&enrich::EnrichConfig {
             source,
             result,
             start_key,

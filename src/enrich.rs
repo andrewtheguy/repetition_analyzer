@@ -128,6 +128,60 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
     }
 }
 
+pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
+    let lookup = build_entry_lookup(config)?;
+
+    let result_file = File::open(&config.result).map_err(|e| AppError::FileOpen {
+        path: config.result.clone(),
+        source: e,
+    })?;
+    let result_json: Value = serde_json::from_reader(BufReader::new(result_file))?;
+
+    let clusters = result_json
+        .get("near_duplicates")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| AppError::Generic("result JSON has no near_duplicates array".into()))?;
+
+    let mut output: Vec<Value> = Vec::new();
+
+    for cluster in clusters {
+        let empty = Vec::new();
+        let members = cluster
+            .get("members")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty);
+        let total_count = cluster.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        // Find the member with the highest index (last occurrence)
+        let last = members
+            .iter()
+            .filter_map(|m| {
+                let arr = m.as_array()?;
+                let idx = arr.first()?.as_u64()?;
+                let text = arr.get(1)?.as_str()?;
+                Some((idx, text))
+            })
+            .max_by_key(|(idx, _)| *idx);
+
+        if let Some((idx, text)) = last {
+            let mut entry = Map::new();
+            entry.insert("text".to_string(), Value::from(text));
+            entry.insert("count".to_string(), Value::from(total_count));
+            entry.insert("last_index".to_string(), Value::from(idx));
+            if let Some(info) = lookup.get(idx as usize) {
+                inject_entry_info(&mut entry, info);
+            }
+            output.push(Value::Object(entry));
+        }
+    }
+
+    output.sort_by_key(|v| v.get("last_index").and_then(|i| i.as_u64()).unwrap_or(0));
+
+    let json = serde_json::to_string_pretty(&output)?;
+    println!("{json}");
+    Ok(())
+}
+
 pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
     let lookup = build_entry_lookup(config)?;
 

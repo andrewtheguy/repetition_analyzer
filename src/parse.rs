@@ -204,6 +204,93 @@ mod tests {
     }
 
     #[test]
+    fn parse_with_bool_filter() {
+        let f = write_temp_jsonl(&[
+            r#"{"active": true, "text": "yes"}"#,
+            r#"{"active": false, "text": "no"}"#,
+            r#"{"active": true, "text": "also yes"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: Some(ParsedFilter {
+                key: "active".to_string(),
+                value: "true".to_string(),
+                filter_type: FilterType::Bool,
+            }),
+        };
+        let entries = parse_jsonl(f.path(), &opts);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text, "yes");
+        assert_eq!(entries[1].text, "also yes");
+    }
+
+    #[test]
+    fn parse_with_int_filter() {
+        let f = write_temp_jsonl(&[
+            r#"{"status": 1, "text": "one"}"#,
+            r#"{"status": 2, "text": "two"}"#,
+            r#"{"status": 1, "text": "another one"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: Some(ParsedFilter {
+                key: "status".to_string(),
+                value: "1".to_string(),
+                filter_type: FilterType::Int,
+            }),
+        };
+        let entries = parse_jsonl(f.path(), &opts);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text, "one");
+        assert_eq!(entries[1].text, "another one");
+    }
+
+    #[test]
+    fn parse_with_float_filter() {
+        let f = write_temp_jsonl(&[
+            r#"{"score": 0.5, "text": "half"}"#,
+            r#"{"score": 1.0, "text": "full"}"#,
+            r#"{"score": 0.5, "text": "also half"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: Some(ParsedFilter {
+                key: "score".to_string(),
+                value: "0.5".to_string(),
+                filter_type: FilterType::Float,
+            }),
+        };
+        let entries = parse_jsonl(f.path(), &opts);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text, "half");
+        assert_eq!(entries[1].text, "also half");
+    }
+
+    #[test]
+    fn parse_filter_type_mismatch_skips() {
+        // int filter against string JSON value should not match
+        let f = write_temp_jsonl(&[
+            r#"{"status": "1", "text": "string one"}"#,
+            r#"{"status": 1, "text": "int one"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: Some(ParsedFilter {
+                key: "status".to_string(),
+                value: "1".to_string(),
+                filter_type: FilterType::Int,
+            }),
+        };
+        let entries = parse_jsonl(f.path(), &opts);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].text, "int one");
+    }
+
+    #[test]
     fn parse_id_from_line_number() {
         let f = write_temp_jsonl(&[r#"{"other": "skip"}"#, r#"{"text": "hello"}"#]);
         let opts = ParseOptions {

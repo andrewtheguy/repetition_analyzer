@@ -1,7 +1,20 @@
+use serde::Serialize;
+
 use crate::exact::{DuplicateGroup, NearDuplicateCluster};
 use crate::ngrams::NgramResult;
 use crate::parse::Transcription;
 use crate::sequences::RepeatedSequence;
+
+#[derive(Serialize)]
+pub struct Report<'a> {
+    pub file_path: &'a str,
+    pub total_entries: usize,
+    pub total_duration_secs: f64,
+    pub exact_duplicates: &'a [DuplicateGroup],
+    pub near_duplicates: &'a [NearDuplicateCluster],
+    pub ngrams: &'a [NgramResult],
+    pub repeated_sequences: &'a [RepeatedSequence],
+}
 
 fn truncate(s: &str, max_len: usize) -> String {
     if s.chars().count() <= max_len {
@@ -9,6 +22,14 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         let truncated: String = s.chars().take(max_len).collect();
         format!("{}...", truncated)
+    }
+}
+
+fn compute_total_duration(entries: &[Transcription]) -> f64 {
+    if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
+        last.end - first.start
+    } else {
+        0.0
     }
 }
 
@@ -35,11 +56,7 @@ pub fn print_report(
     sequences: &[RepeatedSequence],
     top_n: usize,
 ) {
-    let total_duration = if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-        last.end - first.start
-    } else {
-        0.0
-    };
+    let total_duration = compute_total_duration(entries);
 
     // Header
     println!();
@@ -198,4 +215,30 @@ pub fn print_report(
 
     println!();
     println!("{}", "=".repeat(70));
+}
+
+pub fn print_json_report(
+    file_path: &str,
+    entries: &[Transcription],
+    duplicates: &[DuplicateGroup],
+    near_dupes: &[NearDuplicateCluster],
+    ngrams: &[NgramResult],
+    sequences: &[RepeatedSequence],
+) {
+    let total_duration = compute_total_duration(entries);
+
+    let report = Report {
+        file_path,
+        total_entries: entries.len(),
+        total_duration_secs: total_duration,
+        exact_duplicates: duplicates,
+        near_duplicates: near_dupes,
+        ngrams,
+        repeated_sequences: sequences,
+    };
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&report).expect("failed to serialize report")
+    );
 }

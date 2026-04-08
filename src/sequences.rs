@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 
+use serde::Serialize;
+
 use crate::parse::Transcription;
 use crate::similarity::normalize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
     pub start_time: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RepeatedSequence {
     pub length: usize,
     pub occurrences: Vec<SequenceOccurrence>,

@@ -1,3 +1,3 @@
 - No backward compatibility. 
 - Delete unused code outright — no `_unused` renames, no re-exports, no `// removed` comments.
-- Run cargo clippy and cargo test with the new code to ensure it works and is clean.
+- Run cargo clippy and cargo test for rust code changes to ensure it works and is clean.

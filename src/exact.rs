@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use serde::Serialize;
+
 use crate::parse::Transcription;
 use crate::similarity::{normalize, similarity_above_threshold};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct DuplicateGroup {
     pub canonical_text: String,
     pub count: usize,
@@ -36,7 +38,7 @@ pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<DuplicateGroup> {
     groups
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NearDuplicateCluster {
     pub representative_text: String,
     pub members: Vec<(usize, String)>, // (index, text)

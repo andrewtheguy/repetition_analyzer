@@ -148,6 +148,7 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
     let mut wtr = csv::Writer::from_writer(stdout);
     wtr.write_record(["id", "text", "start_ms", "end_ms", "start_formatted", "end_formatted"])?;
     let mut count = 0usize;
+    let mut prev_id: Option<String> = None;
 
     for (line_num, line) in reader.lines().enumerate() {
         let line = line.map_err(|e| AppError::LineRead {
@@ -160,6 +161,21 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
 
         match process_entry(&obj, config, &parsed_filter) {
             Ok(Some(row)) => {
+                if let Some(prev) = &prev_id {
+                    let is_ascending = match (prev.parse::<i64>(), row.id.parse::<i64>()) {
+                        (Ok(a), Ok(b)) => a < b,
+                        _ => prev.as_str() < row.id.as_str(),
+                    };
+                    if !is_ascending {
+                        return Err(AppError::Generic(format!(
+                            "line {}: id '{}' is not ascending from previous id '{}'",
+                            line_num + 1,
+                            row.id,
+                            prev,
+                        )));
+                    }
+                }
+                prev_id = Some(row.id.clone());
                 wtr.write_record([
                     &row.id,
                     &row.text,

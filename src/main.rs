@@ -13,7 +13,6 @@ use std::path::Path;
 use std::time::Instant;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use parse::parse_filter;
 
 struct AnalyzeConfig {
     file: String,
@@ -28,7 +27,6 @@ struct AnalyzeConfig {
     seq_similarity_threshold: f64,
     text_key: String,
     id_key: Option<String>,
-    filter: Option<String>,
     format: Format,
 }
 
@@ -48,9 +46,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Analyze a JSONL file for repeated text
+    /// Analyze a preprocessed JSONL file for repeated text
     Analyze {
-        /// Path to the JSONL file
+        /// Path to the preprocessed JSONL file
         file: String,
 
         /// Minimum n-gram size
@@ -97,18 +95,14 @@ enum Command {
         #[arg(long)]
         id_key: Option<String>,
 
-        /// Filter entries by key=value (e.g., --filter type=transcription)
-        #[arg(long)]
-        filter: Option<String>,
-
         /// Output format
         #[arg(long, value_enum, default_value_t = Format::Human)]
         format: Format,
     },
 
-    /// Enrich a JSON result file with timestamps from the original JSONL source
+    /// Enrich a JSON result file with timestamps from the preprocessed JSONL source
     Enrich {
-        /// Path to the original JSONL source file
+        /// Path to the preprocessed JSONL source file
         #[arg(long)]
         source: String,
 
@@ -131,14 +125,6 @@ enum Command {
         /// JSON key for formatted end time
         #[arg(long, default_value = "end_formatted")]
         end_formatted_key: String,
-
-        /// JSON key to use as text content (for matching entries)
-        #[arg(long, default_value = "text")]
-        text_key: String,
-
-        /// Filter entries by key=value (must match what was used for analyze)
-        #[arg(long)]
-        filter: Option<String>,
 
         /// Optional JSON key to use as entry ID (must match what was used for analyze)
         #[arg(long)]
@@ -181,7 +167,6 @@ fn main() {
             seq_similarity_threshold,
             text_key,
             id_key,
-            filter,
             format,
         } => run_analyze(&AnalyzeConfig {
             file,
@@ -196,7 +181,6 @@ fn main() {
             seq_similarity_threshold,
             text_key,
             id_key,
-            filter,
             format,
         }),
         Command::Enrich {
@@ -206,8 +190,6 @@ fn main() {
             end_key,
             start_formatted_key,
             end_formatted_key,
-            text_key,
-            filter,
             id_key,
         } => enrich::run_enrich(&enrich::EnrichConfig {
             source,
@@ -216,8 +198,6 @@ fn main() {
             end_key,
             start_formatted_key,
             end_formatted_key,
-            text_key,
-            filter,
             id_key,
         }),
         Command::Preprocess {
@@ -248,7 +228,6 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
     let parse_opts = parse::ParseOptions {
         text_key: config.text_key.clone(),
         id_key: config.id_key.clone(),
-        filter: parse_filter(&config.filter),
     };
     let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts)?;
     let include_ids = config.id_key.is_some();

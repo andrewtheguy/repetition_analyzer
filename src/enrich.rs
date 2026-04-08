@@ -4,7 +4,6 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::error::AppError;
-use crate::parse::{filter_matches, parse_filter, ParsedFilter};
 
 pub struct EnrichConfig {
     pub source: String,
@@ -13,8 +12,6 @@ pub struct EnrichConfig {
     pub end_key: String,
     pub start_formatted_key: String,
     pub end_formatted_key: String,
-    pub text_key: String,
-    pub filter: Option<String>,
     pub id_key: Option<String>,
 }
 
@@ -26,7 +23,8 @@ struct EntryInfo {
     id: Option<String>,
 }
 
-fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> crate::error::Result<Vec<EntryInfo>> {
+/// Build lookup from a preprocessed JSONL file. Every line must be valid JSON.
+fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryInfo>> {
     let source_path = &config.source;
     let file = File::open(Path::new(source_path)).map_err(|e| AppError::FileOpen {
         path: source_path.clone(),
@@ -40,32 +38,10 @@ fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> c
             line: line_num + 1,
             source: e,
         })?;
-        let obj: Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        // Apply filter
-        if let Some(f) = filter {
-            match obj.get(&f.key) {
-                Some(v) => match filter_matches(v, f) {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(message) => {
-                        return Err(AppError::FilterMismatch {
-                            line: line_num + 1,
-                            message,
-                        })
-                    }
-                },
-                None => continue,
-            }
-        }
-
-        // Must have text key to be a valid entry
-        if obj.get(&config.text_key).and_then(|v| v.as_str()).is_none() {
-            continue;
-        }
+        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::InvalidJson {
+            line: line_num + 1,
+            source: e,
+        })?;
 
         let id = config.id_key.as_ref().and_then(|key| {
             obj.get(key).and_then(|v| match v {
@@ -153,9 +129,7 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
 }
 
 pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
-    let parsed_filter = parse_filter(&config.filter);
-
-    let lookup = build_entry_lookup(config, &parsed_filter)?;
+    let lookup = build_entry_lookup(config)?;
 
     eprintln!(
         "Loaded {} entries from source for enrichment lookup",

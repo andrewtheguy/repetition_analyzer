@@ -11,6 +11,7 @@ clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v7"] }
 csv = "1"
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"

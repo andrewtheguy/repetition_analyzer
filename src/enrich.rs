@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde_json::{Map, Value};
 use std::fs::File;
 use std::io::BufReader;
@@ -11,6 +13,7 @@ pub struct EnrichConfig {
 }
 
 struct EntryInfo {
+    text: Option<String>,
     start_ms: Option<i64>,
     end_ms: Option<i64>,
     start_formatted: Option<String>,
@@ -20,6 +23,7 @@ struct EntryInfo {
 
 /// CSV column indices: id,text,start_ms,end_ms,start_formatted,end_formatted
 const COL_ID: usize = 0;
+const COL_TEXT: usize = 1;
 const COL_START_MS: usize = 2;
 const COL_END_MS: usize = 3;
 const COL_START_FMT: usize = 4;
@@ -45,6 +49,7 @@ fn build_entry_lookup(source: &str) -> crate::error::Result<Vec<EntryInfo>> {
 
         entries.push(EntryInfo {
             id: record.get(COL_ID).and_then(non_empty),
+            text: record.get(COL_TEXT).and_then(non_empty),
             start_ms: record.get(COL_START_MS).and_then(|s| s.parse().ok()),
             end_ms: record.get(COL_END_MS).and_then(|s| s.parse().ok()),
             start_formatted: record.get(COL_START_FMT).and_then(non_empty),
@@ -119,8 +124,111 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
     }
 }
 
+/// Collect all entry indices that are covered by any repetition pattern.
+fn collect_repeated_indices(result_json: &Value) -> HashSet<usize> {
+    let mut repeated = HashSet::new();
+
+    // From exact_duplicates: indices are [[index, id], ...]
+    if let Some(Value::Array(groups)) = result_json.get("exact_duplicates") {
+        for group in groups {
+            if let Some(Value::Array(indices)) = group.get("indices") {
+                for entry in indices {
+                    if let Some(idx) = entry.as_array().and_then(|a| a.first()?.as_u64()) {
+                        repeated.insert(idx as usize);
+                    }
+                }
+            }
+        }
+    }
+
+    // From near_duplicates: members are [[index, id, text], ...]
+    if let Some(Value::Array(clusters)) = result_json.get("near_duplicates") {
+        for cluster in clusters {
+            if let Some(Value::Array(members)) = cluster.get("members") {
+                for member in members {
+                    if let Some(idx) = member.as_array().and_then(|a| a.first()?.as_u64()) {
+                        repeated.insert(idx as usize);
+                    }
+                }
+            }
+        }
+    }
+
+    // From repeated_sequences: each occurrence covers [start_index, start_index + length)
+    if let Some(Value::Array(seqs)) = result_json.get("repeated_sequences") {
+        for seq in seqs {
+            let length = seq.get("length").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            if let Some(Value::Array(occurrences)) = seq.get("occurrences") {
+                for occ in occurrences {
+                    if let Some(start) = occ.get("start_index").and_then(|v| v.as_u64()) {
+                        for offset in 0..length {
+                            repeated.insert(start as usize + offset);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // From near_duplicate_sequences: same range logic
+    if let Some(Value::Array(seqs)) = result_json.get("near_duplicate_sequences") {
+        for seq in seqs {
+            let length = seq.get("length").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            if let Some(Value::Array(occurrences)) = seq.get("occurrences") {
+                for occ in occurrences {
+                    if let Some(start) = occ.get("start_index").and_then(|v| v.as_u64()) {
+                        for offset in 0..length {
+                            repeated.insert(start as usize + offset);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    repeated
+}
+
+fn build_segment(lookup: &[EntryInfo], start: usize, end: usize, is_repeated: bool) -> Value {
+    let mut seg = Map::new();
+    seg.insert(
+        "type".to_string(),
+        Value::from(if is_repeated { "repeated" } else { "unique" }),
+    );
+    seg.insert("start_index".to_string(), Value::from(start));
+    seg.insert("end_index".to_string(), Value::from(end));
+    seg.insert("entry_count".to_string(), Value::from(end - start + 1));
+
+    let texts: Vec<Value> = (start..=end)
+        .filter_map(|i| lookup.get(i)?.text.as_deref())
+        .map(Value::from)
+        .collect();
+    seg.insert("texts".to_string(), Value::Array(texts));
+
+    // Timestamps: start from first entry, end from last entry
+    if let Some(first) = lookup.get(start) {
+        if let Some(s) = first.start_ms {
+            seg.insert("start_ms".to_string(), Value::from(s));
+        }
+        if let Some(sf) = &first.start_formatted {
+            seg.insert("start_formatted".to_string(), Value::from(sf.clone()));
+        }
+    }
+    if let Some(last) = lookup.get(end) {
+        if let Some(e) = last.end_ms {
+            seg.insert("end_ms".to_string(), Value::from(e));
+        }
+        if let Some(ef) = &last.end_formatted {
+            seg.insert("end_formatted".to_string(), Value::from(ef.clone()));
+        }
+    }
+
+    Value::Object(seg)
+}
+
 pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
     let lookup = build_entry_lookup(&config.source)?;
+    let total = lookup.len();
 
     let result_file = File::open(&config.result).map_err(|e| AppError::FileOpen {
         path: config.result.clone(),
@@ -128,48 +236,32 @@ pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
     })?;
     let result_json: Value = serde_json::from_reader(BufReader::new(result_file))?;
 
-    let clusters = result_json
-        .get("near_duplicates")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| AppError::Generic("result JSON has no near_duplicates array".into()))?;
+    let repeated = collect_repeated_indices(&result_json);
 
-    let mut output: Vec<Value> = Vec::new();
+    eprintln!(
+        "{} / {} entries covered by repetition patterns",
+        repeated.len(),
+        total
+    );
 
-    for cluster in clusters {
-        let empty = Vec::new();
-        let members = cluster
-            .get("members")
-            .and_then(|v| v.as_array())
-            .unwrap_or(&empty);
-        let total_count = cluster.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
+    // Walk entries and group consecutive same-type indices into segments
+    let mut segments: Vec<Value> = Vec::new();
+    if total > 0 {
+        let mut seg_start = 0usize;
+        let mut seg_repeated = repeated.contains(&0);
 
-        // Find the member with the highest index (last occurrence)
-        // Members are serialized as [index, id, text]
-        let last = members
-            .iter()
-            .filter_map(|m| {
-                let arr = m.as_array()?;
-                let idx = arr.first()?.as_u64()?;
-                let text = arr.get(2)?.as_str()?;
-                Some((idx, text))
-            })
-            .max_by_key(|(idx, _)| *idx);
-
-        if let Some((idx, text)) = last {
-            let mut entry = Map::new();
-            entry.insert("text".to_string(), Value::from(text));
-            entry.insert("count".to_string(), Value::from(total_count));
-            entry.insert("last_index".to_string(), Value::from(idx));
-            if let Some(info) = lookup.get(idx as usize) {
-                inject_entry_info(&mut entry, info);
+        for i in 1..total {
+            let is_rep = repeated.contains(&i);
+            if is_rep != seg_repeated {
+                segments.push(build_segment(&lookup, seg_start, i - 1, seg_repeated));
+                seg_start = i;
+                seg_repeated = is_rep;
             }
-            output.push(Value::Object(entry));
         }
+        segments.push(build_segment(&lookup, seg_start, total - 1, seg_repeated));
     }
 
-    output.sort_by_key(|v| v.get("last_index").and_then(|i| i.as_u64()).unwrap_or(0));
-
-    let json = serde_json::to_string_pretty(&output)?;
+    let json = serde_json::to_string_pretty(&segments)?;
     println!("{json}");
     Ok(())
 }

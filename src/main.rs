@@ -101,7 +101,7 @@ enum Command {
         result: String,
     },
 
-    /// [Experimental] Extract one representative per near-duplicate cluster (last occurrence) with timestamps
+    /// Segment entries into contiguous unique/repeated ranges based on all repetition analyses
     ExtractUnique {
         /// Path to the preprocessed CSV source file
         #[arg(long)]

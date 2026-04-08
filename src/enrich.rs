@@ -14,16 +14,18 @@ pub struct EnrichConfig {
     pub end_formatted_key: String,
     pub text_key: String,
     pub filter: Option<String>,
+    pub id_key: Option<String>,
 }
 
-struct TimestampInfo {
+struct EntryInfo {
     start: Option<f64>,
     end: Option<f64>,
     start_formatted: Option<String>,
     end_formatted: Option<String>,
+    id: Option<String>,
 }
 
-fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> Vec<TimestampInfo> {
+fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> Vec<EntryInfo> {
     let file = File::open(Path::new(&config.source)).expect("Failed to open source JSONL file");
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
@@ -55,7 +57,15 @@ fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) 
             continue;
         }
 
-        entries.push(TimestampInfo {
+        let id = config.id_key.as_ref().and_then(|key| {
+            obj.get(key).and_then(|v| match v {
+                Value::String(s) => Some(s.clone()),
+                Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            })
+        });
+
+        entries.push(EntryInfo {
             start: obj.get(&config.start_key).and_then(|v| v.as_f64()),
             end: obj.get(&config.end_key).and_then(|v| v.as_f64()),
             start_formatted: obj
@@ -66,34 +76,42 @@ fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) 
                 .get(&config.end_formatted_key)
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            id,
         });
     }
 
     entries
 }
 
-fn enrich_value(value: &mut Value, lookup: &[TimestampInfo]) {
+fn inject_entry_info(ts: &mut Map<String, Value>, info: &EntryInfo) {
+    if let Some(s) = info.start {
+        ts.insert("start".to_string(), Value::from(s));
+    }
+    if let Some(e) = info.end {
+        ts.insert("end".to_string(), Value::from(e));
+    }
+    if let Some(sf) = &info.start_formatted {
+        ts.insert("start_formatted".to_string(), Value::from(sf.clone()));
+    }
+    if let Some(ef) = &info.end_formatted {
+        ts.insert("end_formatted".to_string(), Value::from(ef.clone()));
+    }
+    if let Some(id) = &info.id {
+        ts.insert("id".to_string(), Value::from(id.clone()));
+    }
+}
+
+fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
     match value {
         Value::Object(map) => {
-            // If this object has a start_index, inject timestamp fields
+            // If this object has a start_index, inject timestamp and id fields
             if let Some(idx) = map.get("start_index").and_then(|v| v.as_u64())
                 && let Some(info) = lookup.get(idx as usize)
             {
-                if let Some(s) = info.start {
-                    map.insert("start".to_string(), Value::from(s));
-                }
-                if let Some(e) = info.end {
-                    map.insert("end".to_string(), Value::from(e));
-                }
-                if let Some(sf) = &info.start_formatted {
-                    map.insert("start_formatted".to_string(), Value::from(sf.clone()));
-                }
-                if let Some(ef) = &info.end_formatted {
-                    map.insert("end_formatted".to_string(), Value::from(ef.clone()));
-                }
+                inject_entry_info(map, info);
             }
 
-            // If this object has an "indices" array (exact_duplicates), add timestamps
+            // If this object has an "indices" array (exact_duplicates), add timestamps + ids
             if let Some(Value::Array(indices)) = map.get("indices") {
                 let ts_array: Vec<Value> = indices
                     .iter()
@@ -102,28 +120,13 @@ fn enrich_value(value: &mut Value, lookup: &[TimestampInfo]) {
                         let mut ts = Map::new();
                         ts.insert("index".to_string(), Value::from(idx));
                         if let Some(info) = lookup.get(idx as usize) {
-                            if let Some(s) = info.start {
-                                ts.insert("start".to_string(), Value::from(s));
-                            }
-                            if let Some(e) = info.end {
-                                ts.insert("end".to_string(), Value::from(e));
-                            }
-                            if let Some(sf) = &info.start_formatted {
-                                ts.insert("start_formatted".to_string(), Value::from(sf.clone()));
-                            }
-                            if let Some(ef) = &info.end_formatted {
-                                ts.insert("end_formatted".to_string(), Value::from(ef.clone()));
-                            }
+                            inject_entry_info(&mut ts, info);
                         }
                         Value::Object(ts)
                     })
                     .collect();
                 map.insert("index_timestamps".to_string(), Value::Array(ts_array));
             }
-
-            // Compute duration for objects that have both start_index and a length
-            // (repeated_sequences, near_duplicate_sequences with occurrences)
-            // handled via the occurrences enrichment above
 
             // Recurse into all values
             for v in map.values_mut() {
@@ -142,10 +145,10 @@ fn enrich_value(value: &mut Value, lookup: &[TimestampInfo]) {
 pub fn run_enrich(config: &EnrichConfig) {
     let parsed_filter = parse_filter(&config.filter);
 
-    let lookup = build_timestamp_lookup(config, &parsed_filter);
+    let lookup = build_entry_lookup(config, &parsed_filter);
 
     eprintln!(
-        "Loaded {} entries from source for timestamp lookup",
+        "Loaded {} entries from source for enrichment lookup",
         lookup.len()
     );
 

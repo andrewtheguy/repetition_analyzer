@@ -138,6 +138,10 @@ enum Command {
         /// Filter entries by key=value (must match what was used for analyze)
         #[arg(long)]
         filter: Option<String>,
+
+        /// Optional JSON key to use as entry ID (must match what was used for analyze)
+        #[arg(long)]
+        id_key: Option<String>,
     },
 
     /// Preprocess a JSONL file: apply filters and optionally insert a UUID column
@@ -205,6 +209,7 @@ fn main() {
             end_formatted_key,
             text_key,
             filter,
+            id_key,
         } => {
             enrich::run_enrich(&enrich::EnrichConfig {
                 source,
@@ -215,6 +220,7 @@ fn main() {
                 end_formatted_key,
                 text_key,
                 filter,
+                id_key,
             });
         }
         Command::Preprocess {
@@ -245,6 +251,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         filter: parse_filter(&config.filter),
     };
     let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts);
+    let include_ids = config.id_key.is_some();
     eprintln!(
         "Loaded {} entries ({:.2}s)",
         entries.len(),
@@ -253,7 +260,7 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // Exact duplicates
     let t = Instant::now();
-    let duplicates = exact::find_exact_duplicates(&entries);
+    let duplicates = exact::find_exact_duplicates(&entries, include_ids);
     eprintln!(
         "Found {} duplicate groups ({:.2}s)",
         duplicates.len(),
@@ -262,7 +269,8 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // Near-duplicates
     let t = Instant::now();
-    let near_dupes = exact::find_near_duplicates(&entries, config.similarity_threshold);
+    let near_dupes =
+        exact::find_near_duplicates(&entries, config.similarity_threshold, include_ids);
     eprintln!(
         "Found {} near-duplicate clusters ({:.2}s)",
         near_dupes.len(),
@@ -271,8 +279,13 @@ fn run_analyze(config: &AnalyzeConfig) {
 
     // N-grams
     let t = Instant::now();
-    let ngram_results =
-        ngrams::extract_ngrams(&entries, config.min_ngram, config.max_ngram, config.min_count);
+    let ngram_results = ngrams::extract_ngrams(
+        &entries,
+        config.min_ngram,
+        config.max_ngram,
+        config.min_count,
+        include_ids,
+    );
     eprintln!(
         "Found {} significant n-grams ({:.2}s)",
         ngram_results.len(),
@@ -286,6 +299,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         config.min_seq_len,
         config.max_seq_len,
         config.min_seq_occurrences,
+        include_ids,
     );
     eprintln!(
         "Found {} repeated sequence patterns ({:.2}s)",
@@ -302,6 +316,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         config.seq_similarity_threshold,
         config.min_seq_occurrences,
         &repeated_seqs,
+        include_ids,
     );
     eprintln!(
         "Found {} near-duplicate sequence patterns ({:.2}s)",

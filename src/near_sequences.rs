@@ -9,6 +9,8 @@ use crate::similarity::{normalize, similarity_above_threshold};
 #[derive(Debug, Serialize)]
 pub struct NearSequenceOccurrence {
     pub start_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_id: Option<String>,
     pub entry_texts: Vec<String>,
 }
 
@@ -27,6 +29,7 @@ pub fn find_near_duplicate_sequences(
     threshold: f64,
     min_occurrences: usize,
     exact_sequences: &[RepeatedSequence],
+    include_ids: bool,
 ) -> Vec<NearDuplicateSequence> {
     let normed: Vec<String> = entries.iter().map(|e| normalize(&e.text)).collect();
 
@@ -137,6 +140,11 @@ pub fn find_near_duplicate_sequences(
                     .iter()
                     .map(|&start_idx| NearSequenceOccurrence {
                         start_index: start_idx,
+                        start_id: if include_ids {
+                            Some(entries[start_idx].id.clone())
+                        } else {
+                            None
+                        },
                         entry_texts: (0..seq_len)
                             .map(|offset| entries[start_idx + offset].text.clone())
                             .collect(),
@@ -211,7 +219,7 @@ mod tests {
             entry(4, "And then nothing else happened after that time"),
         ];
         let exact_seqs = vec![]; // no exact matches
-        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs);
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs, false);
         assert_eq!(seqs.len(), 1);
         assert_eq!(seqs[0].length, 2);
         assert_eq!(seqs[0].occurrences.len(), 2);
@@ -230,15 +238,15 @@ mod tests {
         let exact_seqs = vec![RepeatedSequence {
             length: 2,
             occurrences: vec![
-                crate::sequences::SequenceOccurrence { start_index: 0 },
-                crate::sequences::SequenceOccurrence { start_index: 3 },
+                crate::sequences::SequenceOccurrence { start_index: 0, start_id: None },
+                crate::sequences::SequenceOccurrence { start_index: 3, start_id: None },
             ],
             entry_texts: vec![
                 "identical line one".to_string(),
                 "identical line two".to_string(),
             ],
         }];
-        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs);
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs, false);
         assert!(seqs.is_empty());
     }
 
@@ -251,7 +259,7 @@ mod tests {
             entry(3, "The quick brown fox does something completely new today"),
             entry(4, "A totally unrelated sentence about weather and rain"),
         ];
-        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.95, 2, &[]);
+        let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.95, 2, &[], false);
         assert!(seqs.is_empty());
     }
 }

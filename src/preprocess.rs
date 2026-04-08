@@ -41,6 +41,7 @@ pub fn formatted_to_ms(s: &str) -> Option<i64> {
 }
 
 /// Canonical row produced by preprocessing.
+#[derive(Debug)]
 struct CanonicalRow {
     id: String,
     text: String,
@@ -97,21 +98,33 @@ fn process_entry(
     let (start_ms, start_formatted) = match (start_ms_val, start_fmt_val) {
         (Some(ms), Some(fmt)) => (ms.to_string(), fmt.to_string()),
         (Some(ms), None) => (ms.to_string(), ms_to_formatted(ms)),
-        (None, Some(fmt)) => (
-            formatted_to_ms(fmt).map(|ms| ms.to_string()).unwrap_or_default(),
-            fmt.to_string(),
-        ),
-        (None, None) => (String::new(), String::new()),
+        (None, Some(fmt)) => {
+            let ms = formatted_to_ms(fmt)
+                .ok_or_else(|| format!("invalid start timestamp format: '{fmt}'"))?;
+            (ms.to_string(), fmt.to_string())
+        }
+        (None, None) => {
+            return Err(format!(
+                "missing start timestamp (expected '{}' or '{}')",
+                config.start_ms_key, config.start_formatted_key
+            ));
+        }
     };
 
     let (end_ms, end_formatted) = match (end_ms_val, end_fmt_val) {
         (Some(ms), Some(fmt)) => (ms.to_string(), fmt.to_string()),
         (Some(ms), None) => (ms.to_string(), ms_to_formatted(ms)),
-        (None, Some(fmt)) => (
-            formatted_to_ms(fmt).map(|ms| ms.to_string()).unwrap_or_default(),
-            fmt.to_string(),
-        ),
-        (None, None) => (String::new(), String::new()),
+        (None, Some(fmt)) => {
+            let ms = formatted_to_ms(fmt)
+                .ok_or_else(|| format!("invalid end timestamp format: '{fmt}'"))?;
+            (ms.to_string(), fmt.to_string())
+        }
+        (None, None) => {
+            return Err(format!(
+                "missing end timestamp (expected '{}' or '{}')",
+                config.end_ms_key, config.end_formatted_key
+            ));
+        }
     };
 
     Ok(Some(CanonicalRow {
@@ -141,10 +154,9 @@ pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
             line: line_num + 1,
             source: e,
         })?;
-        let obj: Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::Generic(
+            format!("line {}: invalid JSON: {e}", line_num + 1),
+        ))?;
 
         match process_entry(&obj, config, &parsed_filter) {
             Ok(Some(row)) => {
@@ -199,16 +211,16 @@ mod tests {
     fn preprocess_filters_entries() {
         let config = default_config();
         let filter = parse_filter(&Some("type=transcript".to_string()));
-        assert!(apply(r#"{"type": "meta", "text": "ignored"}"#, &config, &filter).is_none());
-        let kept = apply(r#"{"type": "transcript", "text": "kept"}"#, &config, &filter);
+        assert!(apply(r#"{"type": "meta", "text": "ignored", "start_ms": 0, "end_ms": 100}"#, &config, &filter).is_none());
+        let kept = apply(r#"{"type": "transcript", "text": "kept", "start_ms": 0, "end_ms": 100}"#, &config, &filter);
         assert_eq!(kept.unwrap().text, "kept");
     }
 
     #[test]
     fn preprocess_generates_uuid_without_id_key() {
         let config = default_config();
-        let r0 = apply(r#"{"text": "hello"}"#, &config, &None).unwrap();
-        let r1 = apply(r#"{"text": "world"}"#, &config, &None).unwrap();
+        let r0 = apply(r#"{"text": "hello", "start_ms": 0, "end_ms": 100}"#, &config, &None).unwrap();
+        let r1 = apply(r#"{"text": "world", "start_ms": 100, "end_ms": 200}"#, &config, &None).unwrap();
         assert!(Uuid::parse_str(&r0.id).is_ok());
         assert!(Uuid::parse_str(&r1.id).is_ok());
         assert_ne!(r0.id, r1.id);
@@ -218,15 +230,15 @@ mod tests {
     fn preprocess_uses_existing_id_key() {
         let mut config = default_config();
         config.id_key = Some("uid".to_string());
-        let result = apply(r#"{"text": "hello", "uid": "abc-123"}"#, &config, &None).unwrap();
+        let result = apply(r#"{"text": "hello", "uid": "abc-123", "start_ms": 0, "end_ms": 100}"#, &config, &None).unwrap();
         assert_eq!(result.id, "abc-123");
     }
 
     #[test]
     fn preprocess_skips_missing_text_key() {
         let config = default_config();
-        assert!(apply(r#"{"text": "kept"}"#, &config, &None).is_some());
-        assert!(apply(r#"{"other": "no text field"}"#, &config, &None).is_none());
+        assert!(apply(r#"{"text": "kept", "start_ms": 0, "end_ms": 100}"#, &config, &None).is_some());
+        assert!(apply(r#"{"other": "no text field", "start_ms": 0, "end_ms": 100}"#, &config, &None).is_none());
     }
 
     #[test]
@@ -274,6 +286,36 @@ mod tests {
         assert_eq!(result.id, "x1");
         assert_eq!(result.start_ms, "0");
         assert_eq!(result.end_ms, "100");
+    }
+
+    fn apply_err(json: &str, config: &PreprocessConfig, filter: &Option<ParsedFilter>) -> String {
+        let obj: Value = serde_json::from_str(json).unwrap();
+        process_entry(&obj, config, filter).unwrap_err()
+    }
+
+    #[test]
+    fn preprocess_errors_on_missing_start_timestamp() {
+        let config = default_config();
+        let err = apply_err(r#"{"text": "hi", "end_ms": 100}"#, &config, &None);
+        assert!(err.contains("missing start timestamp"), "got: {err}");
+    }
+
+    #[test]
+    fn preprocess_errors_on_missing_end_timestamp() {
+        let config = default_config();
+        let err = apply_err(r#"{"text": "hi", "start_ms": 0}"#, &config, &None);
+        assert!(err.contains("missing end timestamp"), "got: {err}");
+    }
+
+    #[test]
+    fn preprocess_errors_on_invalid_formatted_timestamp() {
+        let config = default_config();
+        let err = apply_err(
+            r#"{"text": "hi", "start_formatted": "bad", "end_formatted": "00:00:01.000"}"#,
+            &config,
+            &None,
+        );
+        assert!(err.contains("invalid start timestamp format"), "got: {err}");
     }
 
     #[test]

@@ -6,10 +6,11 @@ The tool reads JSONL (JSON Lines) files -- one JSON object per line. Raw input c
 
 ## Canonical Format (after preprocessing)
 
-After running `preprocess`, every line has these fixed field names:
+After running `preprocess`, the output is a CSV file with a header row and these fixed columns:
 
-```json
-{"text": "...", "id": "uuid-or-existing", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
+```csv
+id,text,start_ms,end_ms,start_formatted,end_formatted
+019d...,Some transcript text,0,2500,00:00:00.000,00:00:02.500
 ```
 
 All downstream commands (`analyze`, `enrich`, `extract-unique`) expect this format.
@@ -84,9 +85,10 @@ Raw input:
 
 After `preprocess --filter type=transcript`:
 
-```jsonl
-{"text": "Good morning everyone", "id": "019d...", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
-{"text": "Welcome to the broadcast", "id": "019d...", "start_ms": 2500, "end_ms": 5000, "start_formatted": "00:00:02.500", "end_formatted": "00:00:05.000"}
+```csv
+id,text,start_ms,end_ms,start_formatted,end_formatted
+019d...,Good morning everyone,0,2500,00:00:00.000,00:00:02.500
+019d...,Welcome to the broadcast,2500,5000,00:00:02.500,00:00:05.000
 ```
 
 The non-transcript lines are skipped, and the two entries receive indices 0 and 1.

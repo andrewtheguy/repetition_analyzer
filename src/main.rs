@@ -224,7 +224,7 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
 
     // Exact duplicates
     let t = Instant::now();
-    let duplicates = exact::find_exact_duplicates(&entries, true);
+    let duplicates = exact::find_exact_duplicates(&entries);
     eprintln!(
         "Found {} duplicate groups ({:.2}s)",
         duplicates.len(),
@@ -234,7 +234,7 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
     // Near-duplicates
     let t = Instant::now();
     let near_dupes =
-        exact::find_near_duplicates(&entries, config.similarity_threshold, true);
+        exact::find_near_duplicates(&entries, config.similarity_threshold);
     eprintln!(
         "Found {} near-duplicate clusters ({:.2}s)",
         near_dupes.len(),
@@ -248,7 +248,6 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
         config.min_ngram,
         config.max_ngram,
         config.min_count,
-        true,
     );
     eprintln!(
         "Found {} significant n-grams ({:.2}s)",
@@ -263,7 +262,6 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
         config.min_seq_len,
         config.max_seq_len,
         config.min_seq_occurrences,
-        true,
     );
     eprintln!(
         "Found {} repeated sequence patterns ({:.2}s)",
@@ -280,7 +278,6 @@ fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
         config.seq_similarity_threshold,
         config.min_seq_occurrences,
         &repeated_seqs,
-        true,
     );
     eprintln!(
         "Found {} near-duplicate sequence patterns ({:.2}s)",

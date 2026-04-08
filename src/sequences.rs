@@ -8,8 +8,7 @@ use crate::similarity::normalize;
 #[derive(Debug, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_id: Option<String>,
+    pub start_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,7 +28,6 @@ pub fn find_repeated_sequences(
     min_len: usize,
     max_len: usize,
     min_occurrences: usize,
-    include_ids: bool,
 ) -> Vec<RepeatedSequence> {
     let fingerprints: Vec<String> = entries.iter().map(|e| fingerprint(&e.text)).collect();
     let mut all_sequences: Vec<RepeatedSequence> = Vec::new();
@@ -72,11 +70,7 @@ pub fn find_repeated_sequences(
                 .iter()
                 .map(|&start_idx| SequenceOccurrence {
                     start_index: start_idx,
-                    start_id: if include_ids {
-                        Some(entries[start_idx].id.clone())
-                    } else {
-                        None
-                    },
+                    start_id: entries[start_idx].id.clone(),
                 })
                 .collect();
 
@@ -142,7 +136,7 @@ mod tests {
             entry(3, "first line"),
             entry(4, "second line"),
         ];
-        let seqs = find_repeated_sequences(&entries, 2, 2, 2, false);
+        let seqs = find_repeated_sequences(&entries, 2, 2, 2);
         assert_eq!(seqs.len(), 1);
         assert_eq!(seqs[0].length, 2);
         assert_eq!(seqs[0].occurrences.len(), 2);
@@ -153,7 +147,7 @@ mod tests {
     #[test]
     fn no_repeat_below_min_occurrences() {
         let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
-        let seqs = find_repeated_sequences(&entries, 2, 3, 2, false);
+        let seqs = find_repeated_sequences(&entries, 2, 3, 2);
         assert!(seqs.is_empty());
     }
 
@@ -165,7 +159,7 @@ mod tests {
             entry(1, "same line"),
             entry(2, "same line"),
         ];
-        let seqs = find_repeated_sequences(&entries, 2, 2, 2, false);
+        let seqs = find_repeated_sequences(&entries, 2, 2, 2);
         // Entries 0,1 form one block and 2 can't form another (only 1 entry left)
         // But individual entries repeat, so length-1 wouldn't apply (min_len=2)
         // The 2-entry window "same line|same line" appears at 0 and 1, but they overlap
@@ -184,7 +178,7 @@ mod tests {
             entry(5, "line B"),
             entry(6, "line C"),
         ];
-        let seqs = find_repeated_sequences(&entries, 2, 3, 2, false);
+        let seqs = find_repeated_sequences(&entries, 2, 3, 2);
         // Should find the 3-entry block and suppress 2-entry sub-blocks
         assert_eq!(seqs.len(), 1);
         assert_eq!(seqs[0].length, 3);

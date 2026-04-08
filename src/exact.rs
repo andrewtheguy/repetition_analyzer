@@ -9,15 +9,10 @@ use crate::similarity::{normalize, similarity_above_threshold};
 pub struct DuplicateGroup {
     pub canonical_text: String,
     pub count: usize,
-    pub indices: Vec<usize>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub ids: Vec<String>,
+    pub indices: Vec<(usize, String)>, // (index, id)
 }
 
-pub fn find_exact_duplicates(
-    entries: &[Transcription],
-    include_ids: bool,
-) -> Vec<DuplicateGroup> {
+pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<DuplicateGroup> {
     let mut map: HashMap<String, Vec<usize>> = HashMap::new();
 
     for entry in entries {
@@ -31,16 +26,14 @@ pub fn find_exact_duplicates(
         .map(|(_, indices)| {
             let canonical = entries[indices[0]].text.clone();
             let count = indices.len();
-            let ids = if include_ids {
-                indices.iter().map(|&i| entries[i].id.clone()).collect()
-            } else {
-                Vec::new()
-            };
+            let indices = indices
+                .iter()
+                .map(|&i| (i, entries[i].id.clone()))
+                .collect();
             DuplicateGroup {
                 canonical_text: canonical,
                 count,
                 indices,
-                ids,
             }
         })
         .collect();
@@ -52,16 +45,13 @@ pub fn find_exact_duplicates(
 #[derive(Debug, Serialize)]
 pub struct NearDuplicateCluster {
     pub representative_text: String,
-    pub members: Vec<(usize, String)>, // (index, text)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub member_ids: Vec<String>,
+    pub members: Vec<(usize, String, String)>, // (index, id, text)
     pub total_count: usize,
 }
 
 pub fn find_near_duplicates(
     entries: &[Transcription],
     threshold: f64,
-    include_ids: bool,
 ) -> Vec<NearDuplicateCluster> {
     // Bucket by first 3 words of normalized text
     let mut buckets: HashMap<String, Vec<usize>> = HashMap::new();
@@ -92,7 +82,11 @@ pub fn find_near_duplicates(
                 continue;
             }
 
-            let mut cluster_members = vec![(entries[i].index, entries[i].text.clone())];
+            let mut cluster_members = vec![(
+                entries[i].index,
+                entries[i].id.clone(),
+                entries[i].text.clone(),
+            )];
             assigned[i] = true;
 
             for &j in bucket_indices {
@@ -112,26 +106,21 @@ pub fn find_near_duplicates(
                 }
 
                 if similarity_above_threshold(&normed[i], &normed[j], threshold).is_some() {
-                    cluster_members.push((entries[j].index, entries[j].text.clone()));
+                    cluster_members.push((
+                        entries[j].index,
+                        entries[j].id.clone(),
+                        entries[j].text.clone(),
+                    ));
                     assigned[j] = true;
                 }
             }
 
             if cluster_members.len() >= 2 {
-                let representative = cluster_members[0].1.clone();
+                let representative = cluster_members[0].2.clone();
                 let total = cluster_members.len();
-                let member_ids = if include_ids {
-                    cluster_members
-                        .iter()
-                        .map(|(idx, _)| entries[*idx].id.clone())
-                        .collect()
-                } else {
-                    Vec::new()
-                };
                 clusters.push(NearDuplicateCluster {
                     representative_text: representative,
                     members: cluster_members,
-                    member_ids,
                     total_count: total,
                 });
             }
@@ -163,17 +152,19 @@ mod tests {
             entry(2, "Hello world"),
             entry(3, "Hello world"),
         ];
-        let groups = find_exact_duplicates(&entries, false);
+        let groups = find_exact_duplicates(&entries);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].count, 3);
-        assert_eq!(groups[0].indices, vec![0, 2, 3]);
-        assert!(groups[0].ids.is_empty());
+        let indices: Vec<usize> = groups[0].indices.iter().map(|(i, _)| *i).collect();
+        assert_eq!(indices, vec![0, 2, 3]);
+        assert_eq!(groups[0].indices[0].1, "0");
+        assert_eq!(groups[0].indices[2].1, "3");
     }
 
     #[test]
     fn exact_duplicates_case_insensitive() {
         let entries = vec![entry(0, "Hello World"), entry(1, "hello world")];
-        let groups = find_exact_duplicates(&entries, false);
+        let groups = find_exact_duplicates(&entries);
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].count, 2);
     }
@@ -181,7 +172,7 @@ mod tests {
     #[test]
     fn no_duplicates() {
         let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
-        let groups = find_exact_duplicates(&entries, false);
+        let groups = find_exact_duplicates(&entries);
         assert!(groups.is_empty());
     }
 
@@ -192,9 +183,10 @@ mod tests {
             Transcription { index: 1, id: "bbb".to_string(), text: "other".to_string() },
             Transcription { index: 2, id: "ccc".to_string(), text: "Hello world".to_string() },
         ];
-        let groups = find_exact_duplicates(&entries, true);
+        let groups = find_exact_duplicates(&entries);
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].ids, vec!["aaa", "ccc"]);
+        let ids: Vec<&str> = groups[0].indices.iter().map(|(_, id)| id.as_str()).collect();
+        assert_eq!(ids, vec!["aaa", "ccc"]);
     }
 
     #[test]
@@ -204,10 +196,10 @@ mod tests {
             entry(1, "The quick brown fox leaps over the lazy dog"),
             entry(2, "Something completely different and unrelated here"),
         ];
-        let clusters = find_near_duplicates(&entries, 0.80, false);
+        let clusters = find_near_duplicates(&entries, 0.80);
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].total_count, 2);
-        assert!(clusters[0].member_ids.is_empty());
+        assert_eq!(clusters[0].members[0].1, "0"); // id
     }
 
     #[test]
@@ -217,7 +209,7 @@ mod tests {
             entry(1, "The quick brown fox leaps over the lazy dog"),
         ];
         // Very high threshold should not match
-        let clusters = find_near_duplicates(&entries, 0.99, false);
+        let clusters = find_near_duplicates(&entries, 0.99);
         assert!(clusters.is_empty());
     }
 
@@ -228,7 +220,7 @@ mod tests {
             entry(0, "Alpha beta gamma some long text here for similarity"),
             entry(1, "Delta epsilon zeta some long text here for similarity"),
         ];
-        let clusters = find_near_duplicates(&entries, 0.50, false);
+        let clusters = find_near_duplicates(&entries, 0.50);
         assert!(clusters.is_empty());
     }
 }

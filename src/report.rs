@@ -60,8 +60,8 @@ pub fn print_report(data: &ReportData, top_n: usize) {
             group.count,
             truncate(&group.canonical_text, 120)
         );
-        let first_id = &data.entries[group.indices[0]].id;
-        let last_id = &data.entries[*group.indices.last().unwrap()].id;
+        let first_id = &group.indices[0].1;
+        let last_id = &group.indices.last().unwrap().1;
         println!("        First: id={first_id} | Last: id={last_id}");
         println!();
     }
@@ -82,7 +82,7 @@ pub fn print_report(data: &ReportData, top_n: usize) {
         );
 
         // Show up to 5 variant samples
-        for (idx, (_entry_idx, text)) in cluster.members.iter().take(5).enumerate() {
+        for (idx, (_entry_idx, _id, text)) in cluster.members.iter().take(5).enumerate() {
             println!("        [{}] \"{}\"", idx + 1, truncate(text, 100));
         }
         if cluster.members.len() > 5 {

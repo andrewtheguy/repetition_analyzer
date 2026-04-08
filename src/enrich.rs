@@ -86,11 +86,16 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
                 inject_entry_info(map, info);
             }
 
-            // If this object has an "indices" array (exact_duplicates), add timestamps + ids
+            // If this object has an "indices" array (exact_duplicates),
+            // each element is [index, id] — add timestamps
             if let Some(Value::Array(indices)) = map.get("indices") {
                 let ts_array: Vec<Value> = indices
                     .iter()
-                    .filter_map(|v| v.as_u64())
+                    .filter_map(|v| {
+                        let arr = v.as_array()?;
+                        let idx = arr.first()?.as_u64()?;
+                        Some(idx)
+                    })
                     .map(|idx| {
                         let mut ts = Map::new();
                         ts.insert("index".to_string(), Value::from(idx));
@@ -142,12 +147,13 @@ pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
         let total_count = cluster.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
 
         // Find the member with the highest index (last occurrence)
+        // Members are serialized as [index, id, text]
         let last = members
             .iter()
             .filter_map(|m| {
                 let arr = m.as_array()?;
                 let idx = arr.first()?.as_u64()?;
-                let text = arr.get(1)?.as_str()?;
+                let text = arr.get(2)?.as_str()?;
                 Some((idx, text))
             })
             .max_by_key(|(idx, _)| *idx);

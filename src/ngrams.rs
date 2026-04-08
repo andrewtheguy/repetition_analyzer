@@ -10,9 +10,7 @@ pub struct NgramResult {
     pub ngram: String,
     pub n: usize,
     pub count: usize,
-    pub entry_indices: Vec<usize>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub entry_ids: Vec<String>,
+    pub entry_indices: Vec<(usize, String)>, // (index, id)
 }
 
 pub fn extract_ngrams(
@@ -20,7 +18,6 @@ pub fn extract_ngrams(
     min_n: usize,
     max_n: usize,
     min_count: usize,
-    include_ids: bool,
 ) -> Vec<NgramResult> {
     let normed: Vec<String> = entries.iter().map(|e| normalize(&e.text)).collect();
     let tokenized: Vec<Vec<&str>> = normed
@@ -52,19 +49,18 @@ pub fn extract_ngrams(
             if indices.len() >= min_count {
                 let words: Vec<String> = ngram_words.iter().map(|s| s.to_string()).collect();
                 let ngram = words.join(" ");
-                let entry_ids = if include_ids {
-                    indices.iter().map(|&i| entries[i].id.clone()).collect()
-                } else {
-                    Vec::new()
-                };
+                let count = indices.len();
+                let entry_indices = indices
+                    .into_iter()
+                    .map(|i| (i, entries[i].id.clone()))
+                    .collect();
                 results.push((
                     words,
                     NgramResult {
                         ngram,
                         n,
-                        count: indices.len(),
-                        entry_indices: indices,
-                        entry_ids,
+                        count,
+                        entry_indices,
                     },
                 ));
             }
@@ -153,7 +149,7 @@ mod tests {
             entry(2, "the quick brown cat"),
             entry(3, "something else entirely"),
         ];
-        let results = extract_ngrams(&entries, 3, 3, 3, false);
+        let results = extract_ngrams(&entries, 3, 3, 3);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].ngram, "the quick brown");
         assert_eq!(results[0].count, 3);
@@ -167,11 +163,11 @@ mod tests {
             entry(2, "delta epsilon zeta"),
         ];
         // min_count=3 should find nothing (only 2 occurrences)
-        let results = extract_ngrams(&entries, 3, 3, 3, false);
+        let results = extract_ngrams(&entries, 3, 3, 3);
         assert!(results.is_empty());
 
         // min_count=2 should find it
-        let results = extract_ngrams(&entries, 3, 3, 2, false);
+        let results = extract_ngrams(&entries, 3, 3, 2);
         assert_eq!(results.len(), 1);
     }
 
@@ -183,7 +179,7 @@ mod tests {
             entry(2, "a b c d"),
         ];
         // "a b c d" (4-gram) should suppress "a b c" (3-gram) since same count
-        let results = extract_ngrams(&entries, 3, 4, 3, false);
+        let results = extract_ngrams(&entries, 3, 4, 3);
         let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
         assert!(ngrams.contains(&"a b c d"));
         assert!(!ngrams.contains(&"a b c"));
@@ -191,20 +187,21 @@ mod tests {
 
     #[test]
     fn empty_entries() {
-        let results = extract_ngrams(&[], 3, 5, 2, false);
+        let results = extract_ngrams(&[], 3, 5, 2);
         assert!(results.is_empty());
     }
 
     #[test]
-    fn includes_entry_ids_when_requested() {
+    fn includes_entry_ids() {
         let entries = vec![
             Transcription { index: 0, id: "aaa".to_string(), text: "the quick brown fox".to_string() },
             Transcription { index: 1, id: "bbb".to_string(), text: "the quick brown dog".to_string() },
             Transcription { index: 2, id: "ccc".to_string(), text: "something else entirely".to_string() },
         ];
-        let results = extract_ngrams(&entries, 3, 3, 2, true);
+        let results = extract_ngrams(&entries, 3, 3, 2);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].ngram, "the quick brown");
-        assert_eq!(results[0].entry_ids, vec!["aaa", "bbb"]);
+        let ids: Vec<&str> = results[0].entry_indices.iter().map(|(_, id)| id.as_str()).collect();
+        assert_eq!(ids, vec!["aaa", "bbb"]);
     }
 }

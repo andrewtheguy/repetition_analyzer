@@ -25,8 +25,6 @@ Produces a single JSON object on stdout:
 {
   "file_path": "string",
   "total_entries": 0,
-  "id_column": null,
-  "id_from_line_number": true,
   "exact_duplicates": [ ... ],
   "near_duplicates": [ ... ],
   "ngrams": [ ... ],
@@ -34,9 +32,6 @@ Produces a single JSON object on stdout:
   "near_duplicate_sequences": [ ... ]
 }
 ```
-
-- `id_column`: The `--id-key` value if provided (e.g., `"uid"`), or `null` when using line numbers.
-- `id_from_line_number`: `true` when IDs are auto-generated from file line numbers, `false` when sourced from a JSONL column.
 
 ### `exact_duplicates`
 
@@ -130,12 +125,12 @@ Each occurrence stores its own `entry_texts` since the texts differ between occu
 
 ## Enriched Output (`enrich` subcommand)
 
-Running `enrich` on a result JSON file adds timestamp data from the original JSONL source:
+Running `enrich` on a result JSON file adds timestamp data from the preprocessed JSONL source:
 
 - **Top level:** `total_duration_secs` is added (last entry end - first entry start).
-- **`start_index` objects:** Each object with a `start_index` field gets `start`, `end`, `start_formatted`, `end_formatted` injected (if available in the source).
+- **`start_index` objects:** Each object with a `start_index` field gets `start_ms`, `end_ms`, `start_formatted`, `end_formatted` injected (if available in the source).
 - **`indices` arrays:** An `index_timestamps` array is added alongside, with each element containing the index plus its timestamp fields.
 
 ```bash
-repetition_analyzer enrich --source data.jsonl --result result.json > enriched.json
+repetition_analyzer enrich --source filtered.jsonl --result result.json > enriched.json
 ```

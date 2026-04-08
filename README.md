@@ -7,37 +7,56 @@ A command-line tool for detecting repeated text in JSONL files. It reads any JSO
 ```bash
 cargo build --release
 
-# Analyze any JSONL file (uses "text" field by default)
-./target/release/repetition_analyzer analyze data.jsonl
+# Preprocess: filter, normalize field names, and assign unique IDs
+./target/release/repetition_analyzer preprocess data.jsonl --filter type=transcript > filtered.jsonl
 
-# Filter to specific entry types
-./target/release/repetition_analyzer analyze --filter type=transcript data.jsonl
-
-# Use a custom text field
-./target/release/repetition_analyzer analyze --text-key content data.jsonl
+# Analyze the preprocessed file
+./target/release/repetition_analyzer analyze filtered.jsonl
 
 # JSON output
-./target/release/repetition_analyzer analyze data.jsonl --format json > result.json
+./target/release/repetition_analyzer analyze filtered.jsonl --format json > result.json
 
-# Enrich result with timestamps from the original file
-./target/release/repetition_analyzer enrich --source data.jsonl --result result.json > enriched.json
+# Enrich result with timestamps from the preprocessed file
+./target/release/repetition_analyzer enrich --source filtered.jsonl --result result.json > enriched.json
 
-# Preprocess: filter entries and optionally insert UUIDs
-./target/release/repetition_analyzer preprocess data.jsonl --filter type=transcript --new-id-key uuid_id > filtered.jsonl
+# Extract unique near-duplicate cluster representatives
+./target/release/repetition_analyzer extract-unique --source filtered.jsonl --result result.json > unique.json
 ```
+
+## Workflow
+
+All data flows through `preprocess` first, which produces a canonical JSONL format:
+
+```json
+{"text": "...", "id": "uuid-or-existing", "start_ms": 0, "end_ms": 2500, "start_formatted": "00:00:00.000", "end_formatted": "00:00:02.500"}
+```
+
+Downstream commands (`analyze`, `enrich`, `extract-unique`) expect this format with no additional field-mapping arguments.
 
 ## Subcommands
 
-### `analyze`
+### `preprocess`
 
-Runs all analyses on a JSONL file and outputs a report.
+Filters a JSONL file, normalizes field names to canonical keys, and ensures every entry has a unique `id`. If only millisecond or formatted timestamps are available, the missing form is computed automatically.
 
 | Option | Default | Description |
 |---|---|---|
 | `<file>` | -- | Path to the JSONL file |
-| `--text-key` | `text` | JSON key containing the text to analyze |
-| `--id-key` | -- | JSON key to use as entry ID (defaults to file line number) |
+| `--text-key` | `text` | Input JSON key for text content |
+| `--id-key` | -- | Input JSON key for existing unique ID (omit to auto-generate UUIDv7) |
+| `--start-ms-key` | `start_ms` | Input JSON key for start time in milliseconds |
+| `--end-ms-key` | `end_ms` | Input JSON key for end time in milliseconds |
+| `--start-formatted-key` | `start_formatted` | Input JSON key for formatted start time (HH:MM:SS.mmm) |
+| `--end-formatted-key` | `end_formatted` | Input JSON key for formatted end time (HH:MM:SS.mmm) |
 | `--filter` | -- | Filter entries by `key=value` or `key:type=value` (see [docs/input-format.md](docs/input-format.md)) |
+
+### `analyze`
+
+Runs all analyses on a preprocessed JSONL file and outputs a report.
+
+| Option | Default | Description |
+|---|---|---|
+| `<file>` | -- | Path to the preprocessed JSONL file |
 | `--min-ngram` | 3 | Minimum word count for phrase detection |
 | `--max-ngram` | 8 | Maximum word count for phrase detection |
 | `--similarity-threshold` | 0.85 | Similarity ratio (0.0-1.0) for near-duplicate clustering |
@@ -51,29 +70,21 @@ Runs all analyses on a JSONL file and outputs a report.
 
 ### `enrich`
 
-Post-processes a JSON result file by joining it with the original JSONL source to inject timestamp data. This is a separate step so the core analysis stays generic.
+Post-processes a JSON result file by joining it with the preprocessed JSONL source to inject timestamp data.
 
 | Option | Default | Description |
 |---|---|---|
-| `--source` | -- | Path to the original JSONL file |
+| `--source` | -- | Path to the preprocessed JSONL file |
 | `--result` | -- | Path to the JSON result from `analyze` |
-| `--start-key` | `start` | JSON key for start time (seconds) |
-| `--end-key` | `end` | JSON key for end time (seconds) |
-| `--start-formatted-key` | `start_formatted` | JSON key for formatted start time |
-| `--end-formatted-key` | `end_formatted` | JSON key for formatted end time |
-| `--text-key` | `text` | JSON key for text (must match what was used in `analyze`) |
-| `--filter` | -- | Filter (must match what was used in `analyze`) |
 
-### `preprocess`
+### `extract-unique` (Experimental)
 
-Filters a JSONL file and optionally inserts a UUIDv7 column into each entry. Outputs filtered JSONL to stdout.
+Extracts one representative per near-duplicate cluster (the last occurrence by index) with timestamp metadata.
 
 | Option | Default | Description |
 |---|---|---|
-| `<file>` | -- | Path to the JSONL file |
-| `--text-key` | `text` | JSON key for text content (entries missing this field are skipped) |
-| `--filter` | -- | Filter entries by `key=value` or `key:type=value` |
-| `--new-id-key` | -- | If set, inserts a UUIDv7 into each entry under this key name |
+| `--source` | -- | Path to the preprocessed JSONL file |
+| `--result` | -- | Path to the JSON result from `analyze` |
 
 See [docs/input-format.md](docs/input-format.md), [docs/analyses.md](docs/analyses.md), and [docs/output-format.md](docs/output-format.md) for details.
 

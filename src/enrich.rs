@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::error::AppError;
@@ -8,11 +8,6 @@ use crate::error::AppError;
 pub struct EnrichConfig {
     pub source: String,
     pub result: String,
-    pub start_key: String,
-    pub end_key: String,
-    pub start_formatted_key: String,
-    pub end_formatted_key: String,
-    pub id_key: Option<String>,
 }
 
 struct EntryInfo {
@@ -23,46 +18,37 @@ struct EntryInfo {
     id: Option<String>,
 }
 
-/// Build lookup from a preprocessed JSONL file. Every line must be valid JSON.
-fn build_entry_lookup(config: &EnrichConfig) -> crate::error::Result<Vec<EntryInfo>> {
-    let source_path = &config.source;
-    let file = File::open(Path::new(source_path)).map_err(|e| AppError::FileOpen {
-        path: source_path.clone(),
+/// CSV column indices: id,text,start_ms,end_ms,start_formatted,end_formatted
+const COL_ID: usize = 0;
+const COL_START_MS: usize = 2;
+const COL_END_MS: usize = 3;
+const COL_START_FMT: usize = 4;
+const COL_END_FMT: usize = 5;
+
+fn non_empty(s: &str) -> Option<String> {
+    if s.is_empty() { None } else { Some(s.to_string()) }
+}
+
+/// Build lookup from a preprocessed CSV file (canonical format).
+fn build_entry_lookup(source: &str) -> crate::error::Result<Vec<EntryInfo>> {
+    let file = File::open(Path::new(source)).map_err(|e| AppError::FileOpen {
+        path: source.to_string(),
         source: e,
     })?;
-    let reader = BufReader::new(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(BufReader::new(file));
     let mut entries = Vec::new();
 
-    for (line_num, line) in reader.lines().enumerate() {
-        let line = line.map_err(|e| AppError::LineRead {
-            line: line_num + 1,
-            source: e,
-        })?;
-        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::InvalidJson {
-            line: line_num + 1,
-            source: e,
-        })?;
-
-        let id = config.id_key.as_ref().and_then(|key| {
-            obj.get(key).and_then(|v| match v {
-                Value::String(s) => Some(s.clone()),
-                Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            })
-        });
+    for (line_num, result) in rdr.records().enumerate() {
+        let record = result.map_err(|e| AppError::Generic(format!("line {}: {e}", line_num + 1)))?;
 
         entries.push(EntryInfo {
-            start_ms: obj.get(&config.start_key).and_then(|v| v.as_i64()),
-            end_ms: obj.get(&config.end_key).and_then(|v| v.as_i64()),
-            start_formatted: obj
-                .get(&config.start_formatted_key)
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            end_formatted: obj
-                .get(&config.end_formatted_key)
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            id,
+            id: record.get(COL_ID).and_then(non_empty),
+            start_ms: record.get(COL_START_MS).and_then(|s| s.parse().ok()),
+            end_ms: record.get(COL_END_MS).and_then(|s| s.parse().ok()),
+            start_formatted: record.get(COL_START_FMT).and_then(non_empty),
+            end_formatted: record.get(COL_END_FMT).and_then(non_empty),
         });
     }
 
@@ -97,11 +83,16 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
                 inject_entry_info(map, info);
             }
 
-            // If this object has an "indices" array (exact_duplicates), add timestamps + ids
+            // If this object has an "indices" array (exact_duplicates),
+            // each element is [index, id] — add timestamps
             if let Some(Value::Array(indices)) = map.get("indices") {
                 let ts_array: Vec<Value> = indices
                     .iter()
-                    .filter_map(|v| v.as_u64())
+                    .filter_map(|v| {
+                        let arr = v.as_array()?;
+                        let idx = arr.first()?.as_u64()?;
+                        Some(idx)
+                    })
                     .map(|idx| {
                         let mut ts = Map::new();
                         ts.insert("index".to_string(), Value::from(idx));
@@ -128,8 +119,63 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
     }
 }
 
+pub fn run_extract_unique(config: &EnrichConfig) -> crate::error::Result<()> {
+    let lookup = build_entry_lookup(&config.source)?;
+
+    let result_file = File::open(&config.result).map_err(|e| AppError::FileOpen {
+        path: config.result.clone(),
+        source: e,
+    })?;
+    let result_json: Value = serde_json::from_reader(BufReader::new(result_file))?;
+
+    let clusters = result_json
+        .get("near_duplicates")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| AppError::Generic("result JSON has no near_duplicates array".into()))?;
+
+    let mut output: Vec<Value> = Vec::new();
+
+    for cluster in clusters {
+        let empty = Vec::new();
+        let members = cluster
+            .get("members")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty);
+        let total_count = cluster.get("total_count").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        // Find the member with the highest index (last occurrence)
+        // Members are serialized as [index, id, text]
+        let last = members
+            .iter()
+            .filter_map(|m| {
+                let arr = m.as_array()?;
+                let idx = arr.first()?.as_u64()?;
+                let text = arr.get(2)?.as_str()?;
+                Some((idx, text))
+            })
+            .max_by_key(|(idx, _)| *idx);
+
+        if let Some((idx, text)) = last {
+            let mut entry = Map::new();
+            entry.insert("text".to_string(), Value::from(text));
+            entry.insert("count".to_string(), Value::from(total_count));
+            entry.insert("last_index".to_string(), Value::from(idx));
+            if let Some(info) = lookup.get(idx as usize) {
+                inject_entry_info(&mut entry, info);
+            }
+            output.push(Value::Object(entry));
+        }
+    }
+
+    output.sort_by_key(|v| v.get("last_index").and_then(|i| i.as_u64()).unwrap_or(0));
+
+    let json = serde_json::to_string_pretty(&output)?;
+    println!("{json}");
+    Ok(())
+}
+
 pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
-    let lookup = build_entry_lookup(config)?;
+    let lookup = build_entry_lookup(&config.source)?;
 
     eprintln!(
         "Loaded {} entries from source for enrichment lookup",

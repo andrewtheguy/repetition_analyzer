@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 use crate::error::AppError;
@@ -116,55 +117,42 @@ pub struct Transcription {
     pub text: String,
 }
 
-pub struct ParseOptions {
-    pub text_key: String,
-    pub id_key: Option<String>,
-}
+/// CSV column indices for the canonical format: id,text,start_ms,end_ms,start_formatted,end_formatted
+const COL_ID: usize = 0;
+const COL_TEXT: usize = 1;
 
-/// Parse a preprocessed JSONL file. Every line must be valid JSON with the text key present.
-pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec<Transcription>> {
+/// Parse a preprocessed CSV file. Expects columns: id,text,start_ms,end_ms,start_formatted,end_formatted (no header row).
+pub fn parse_csv(path: &Path) -> crate::error::Result<Vec<Transcription>> {
     let file = File::open(path).map_err(|e| AppError::FileOpen {
         path: path.display().to_string(),
         source: e,
     })?;
-    let reader = BufReader::new(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(BufReader::new(file));
     let mut transcriptions = Vec::new();
-    let mut seen_ids: Option<std::collections::HashSet<String>> =
-        if opts.id_key.is_some() { Some(std::collections::HashSet::new()) } else { None };
+    let mut seen_ids = HashSet::new();
 
-    for (line_num, line) in reader.lines().enumerate() {
-        let line = line.map_err(|e| AppError::LineRead {
-            line: line_num + 1,
-            source: e,
-        })?;
-        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::InvalidJson {
-            line: line_num + 1,
-            source: e,
-        })?;
+    for (line_num, result) in rdr.records().enumerate() {
+        let record = result.map_err(|e| AppError::Generic(format!("line {}: {e}", line_num + 1)))?;
 
-        let text = match obj.get(&opts.text_key) {
-            Some(Value::String(s)) => s.clone(),
-            _ => {
-                return Err(AppError::MissingTextField {
-                    line: line_num + 1,
-                    key: opts.text_key.clone(),
-                })
-            }
-        };
+        let id = record
+            .get(COL_ID)
+            .ok_or_else(|| AppError::MissingTextField {
+                line: line_num + 1,
+                key: "id".to_string(),
+            })?
+            .to_string();
 
-        let id = if let Some(id_key) = &opts.id_key {
-            match obj.get(id_key) {
-                Some(Value::String(s)) => s.clone(),
-                Some(Value::Number(n)) => n.to_string(),
-                _ => (line_num + 1).to_string(),
-            }
-        } else {
-            (line_num + 1).to_string()
-        };
+        let text = record
+            .get(COL_TEXT)
+            .ok_or_else(|| AppError::MissingTextField {
+                line: line_num + 1,
+                key: "text".to_string(),
+            })?
+            .to_string();
 
-        if let Some(seen) = &mut seen_ids
-            && !seen.insert(id.clone())
-        {
+        if !seen_ids.insert(id.clone()) {
             return Err(AppError::DuplicateId {
                 line: line_num + 1,
                 id,
@@ -186,51 +174,62 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    fn write_temp_jsonl(lines: &[&str]) -> tempfile::NamedTempFile {
+    const HEADER: &str = "id,text,start_ms,end_ms,start_formatted,end_formatted";
+
+    fn write_temp_csv(rows: &[&str]) -> tempfile::NamedTempFile {
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        for line in lines {
-            writeln!(f, "{}", line).unwrap();
+        writeln!(f, "{}", HEADER).unwrap();
+        for row in rows {
+            writeln!(f, "{}", row).unwrap();
         }
         f
     }
 
     #[test]
-    fn parse_default_text_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "hello world"}"#, r#"{"text": "goodbye"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
+    fn parse_canonical_format() {
+        let f = write_temp_csv(&[
+            "a1,hello world,0,2500,00:00:00.000,00:00:02.500",
+            "a2,goodbye,2500,5000,00:00:02.500,00:00:05.000",
+        ]);
+        let entries = parse_csv(f.path()).unwrap();
         assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, "a1");
         assert_eq!(entries[0].text, "hello world");
+        assert_eq!(entries[1].id, "a2");
         assert_eq!(entries[1].text, "goodbye");
         assert_eq!(entries[0].index, 0);
         assert_eq!(entries[1].index, 1);
     }
 
     #[test]
-    fn parse_custom_text_key() {
-        let f = write_temp_jsonl(&[r#"{"content": "foo bar"}"#]);
-        let opts = ParseOptions {
-            text_key: "content".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "foo bar");
+    fn parse_text_with_commas() {
+        let f = write_temp_csv(&[
+            r#"a1,"hello, world",0,100,00:00:00.000,00:00:00.100"#,
+        ]);
+        let entries = parse_csv(f.path()).unwrap();
+        assert_eq!(entries[0].text, "hello, world");
     }
 
     #[test]
-    fn parse_errors_on_missing_text_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "kept"}"#, r#"{"other": "no text"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let result = parse_jsonl(f.path(), &opts);
+    fn parse_duplicate_id_returns_err() {
+        let f = write_temp_csv(&[
+            "same-id,text a,0,100,00:00:00.000,00:00:00.100",
+            "same-id,text b,100,200,00:00:00.100,00:00:00.200",
+        ]);
+        let result = parse_csv(f.path());
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), AppError::MissingTextField { .. }));
+        assert!(matches!(result.unwrap_err(), AppError::DuplicateId { .. }));
+    }
+
+    #[test]
+    fn parse_index_matches_line_number() {
+        let f = write_temp_csv(&[
+            "1,a,,,,", "2,b,,,,", "3,c,,,,"
+        ]);
+        let entries = parse_csv(f.path()).unwrap();
+        assert_eq!(entries[0].index, 0);
+        assert_eq!(entries[1].index, 1);
+        assert_eq!(entries[2].index, 2);
     }
 
     #[test]
@@ -244,104 +243,5 @@ mod tests {
         let result = filter_matches(&json_val, &filter);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("filter type mismatch"));
-    }
-
-    #[test]
-    fn parse_id_from_line_number() {
-        let f = write_temp_jsonl(&[r#"{"text": "first"}"#, r#"{"text": "hello"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].id, "1");
-        assert_eq!(entries[1].id, "2");
-    }
-
-    #[test]
-    fn parse_custom_id_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "hi", "uid": "abc-123"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].id, "abc-123");
-    }
-
-    #[test]
-    fn parse_unique_ids_accepted() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a", "uid": "id-1"}"#,
-            r#"{"text": "b", "uid": "id-2"}"#,
-            r#"{"text": "c", "uid": "id-3"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 3);
-    }
-
-    #[test]
-    fn parse_no_uniqueness_check_without_id_key() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a"}"#,
-            r#"{"text": "b"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-    }
-
-    #[test]
-    fn parse_duplicate_id_returns_err() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a", "uid": "same-id"}"#,
-            r#"{"text": "b", "uid": "same-id"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: Some("uid".to_string()),
-        };
-        let result = parse_jsonl(f.path(), &opts);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            AppError::DuplicateId { .. }
-        ));
-    }
-
-    #[test]
-    fn parse_errors_on_invalid_json() {
-        let f = write_temp_jsonl(&["not json", r#"{"text": "valid"}"#]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let result = parse_jsonl(f.path(), &opts);
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), AppError::InvalidJson { .. }));
-    }
-
-    #[test]
-    fn parse_index_matches_line_number() {
-        let f = write_temp_jsonl(&[
-            r#"{"text": "a"}"#,
-            r#"{"text": "b"}"#,
-            r#"{"text": "c"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].index, 0);
-        assert_eq!(entries[1].index, 1);
-        assert_eq!(entries[2].index, 2);
     }
 }

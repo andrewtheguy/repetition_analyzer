@@ -15,20 +15,20 @@ pub enum AppError {
     #[error("Failed to write output: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("line {line}: invalid JSON: {source}")]
-    InvalidJson {
-        line: usize,
-        source: serde_json::Error,
-    },
+    #[error("CSV error: {0}")]
+    Csv(#[from] csv::Error),
 
-    #[error("line {line}: missing text field '{key}'")]
+    #[error("line {line}: missing field '{key}'")]
     MissingTextField { line: usize, key: String },
 
     #[error("line {line}: {message}")]
-    FilterMismatch { line: usize, message: String },
+    LineError { line: usize, message: String },
 
     #[error("line {line}: duplicate id '{id}'")]
     DuplicateId { line: usize, id: String },
+
+    #[error("{0}")]
+    Generic(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

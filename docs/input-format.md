@@ -30,7 +30,27 @@ Use `--id-key uid` to use `"abc-123"` as the ID instead of the line number.
 
 ## Optional: Filtering
 
-If your JSONL file contains mixed entry types, use `--filter key=value` to select only matching entries:
+If your JSONL file contains mixed entry types, use `--filter` to select only matching entries.
+
+### String filtering (default)
+
+```bash
+--filter type=transcription
+```
+
+Matches entries where the `type` field equals the string `"transcription"`. This is equivalent to `--filter type:str=transcription`.
+
+### Typed filtering
+
+For non-string fields, specify the type with `key:type=value`:
+
+| Syntax | Matches |
+|---|---|
+| `--filter key=value` | String field (default) |
+| `--filter key:str=value` | String field (explicit) |
+| `--filter key:bool=true` | Boolean field |
+| `--filter key:int=1` | Integer field |
+| `--filter key:float=0.5` | Float field |
 
 ```jsonl
 {"type": "metadata", "info": "..."}
@@ -38,7 +58,13 @@ If your JSONL file contains mixed entry types, use `--filter key=value` to selec
 {"type": "transcription", "text": "Welcome to the broadcast"}
 ```
 
-Use `--filter type=transcription` to process only transcription entries. Lines that don't match the filter (or lack the text key) are silently skipped.
+Use `--filter type=transcription` to process only transcription entries.
+
+**Behavior:**
+
+- Lines that don't match the filter (or lack the filter key) are silently skipped.
+- Null values for the filter key are silently skipped.
+- If a field exists but has a different JSON type than specified (e.g., `--filter status:int=1` on a string `"1"`), the tool exits with a type mismatch error.
 
 ## Indexing
 

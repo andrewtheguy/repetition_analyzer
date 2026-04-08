@@ -3,6 +3,7 @@ mod exact;
 mod near_sequences;
 mod ngrams;
 mod parse;
+mod preprocess;
 mod report;
 mod sequences;
 mod similarity;
@@ -138,6 +139,24 @@ enum Command {
         #[arg(long)]
         filter: Option<String>,
     },
+
+    /// Preprocess a JSONL file: apply filters and optionally insert a UUID column
+    Preprocess {
+        /// Path to the JSONL file
+        file: String,
+
+        /// JSON key to use as text content
+        #[arg(long, default_value = "text")]
+        text_key: String,
+
+        /// Filter entries by key=value or key:type=value
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Insert a UUID v4 into each entry under this key name
+        #[arg(long)]
+        new_id_key: Option<String>,
+    },
 }
 
 fn main() {
@@ -196,6 +215,19 @@ fn main() {
                 end_formatted_key,
                 text_key,
                 filter,
+            });
+        }
+        Command::Preprocess {
+            file,
+            text_key,
+            filter,
+            new_id_key,
+        } => {
+            preprocess::run_preprocess(&preprocess::PreprocessConfig {
+                file,
+                text_key,
+                filter,
+                new_id_key,
             });
         }
     }

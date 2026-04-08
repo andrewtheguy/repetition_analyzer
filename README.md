@@ -21,6 +21,9 @@ cargo build --release
 
 # Enrich result with timestamps from the original file
 ./target/release/repetition_analyzer enrich --source data.jsonl --result result.json > enriched.json
+
+# Preprocess: filter entries and optionally insert UUIDs
+./target/release/repetition_analyzer preprocess data.jsonl --filter type=transcription --new-id-key uuid_id > filtered.jsonl
 ```
 
 ## Subcommands
@@ -34,7 +37,7 @@ Runs all analyses on a JSONL file and outputs a report.
 | `<file>` | -- | Path to the JSONL file |
 | `--text-key` | `text` | JSON key containing the text to analyze |
 | `--id-key` | -- | JSON key to use as entry ID (defaults to file line number) |
-| `--filter` | -- | Filter entries by `key=value` (e.g., `--filter type=transcription`) |
+| `--filter` | -- | Filter entries by `key=value` or `key:type=value` (see [docs/input-format.md](docs/input-format.md)) |
 | `--min-ngram` | 3 | Minimum word count for phrase detection |
 | `--max-ngram` | 8 | Maximum word count for phrase detection |
 | `--similarity-threshold` | 0.85 | Similarity ratio (0.0-1.0) for near-duplicate clustering |
@@ -60,6 +63,17 @@ Post-processes a JSON result file by joining it with the original JSONL source t
 | `--end-formatted-key` | `end_formatted` | JSON key for formatted end time |
 | `--text-key` | `text` | JSON key for text (must match what was used in `analyze`) |
 | `--filter` | -- | Filter (must match what was used in `analyze`) |
+
+### `preprocess`
+
+Filters a JSONL file and optionally inserts a UUIDv7 column into each entry. Outputs filtered JSONL to stdout.
+
+| Option | Default | Description |
+|---|---|---|
+| `<file>` | -- | Path to the JSONL file |
+| `--text-key` | `text` | JSON key for text content (entries missing this field are skipped) |
+| `--filter` | -- | Filter entries by `key=value` or `key:type=value` |
+| `--new-id-key` | -- | If set, inserts a UUIDv7 into each entry under this key name |
 
 See [docs/input-format.md](docs/input-format.md), [docs/analyses.md](docs/analyses.md), and [docs/output-format.md](docs/output-format.md) for details.
 

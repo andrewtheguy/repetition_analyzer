@@ -9,7 +9,6 @@ use crate::similarity::{normalize, similarity_above_threshold};
 #[derive(Debug, Serialize)]
 pub struct NearSequenceOccurrence {
     pub start_index: usize,
-    pub start_time: String,
     pub entry_texts: Vec<String>,
 }
 
@@ -19,7 +18,6 @@ pub struct NearDuplicateSequence {
     pub occurrences: Vec<NearSequenceOccurrence>,
     pub representative_texts: Vec<String>,
     pub avg_similarity: f64,
-    pub duration_secs: f64,
 }
 
 pub fn find_near_duplicate_sequences(
@@ -139,14 +137,12 @@ pub fn find_near_duplicate_sequences(
                     .iter()
                     .map(|&start_idx| NearSequenceOccurrence {
                         start_index: start_idx,
-                        start_time: entries[start_idx].start_formatted.clone(),
                         entry_texts: (0..seq_len)
                             .map(|offset| entries[start_idx + offset].text.clone())
                             .collect(),
                     })
                     .collect();
 
-                let duration = entries[cluster[0] + seq_len - 1].end - entries[cluster[0]].start;
                 let avg_sim = if cluster_comparisons > 0 {
                     cluster_total_sim / cluster_comparisons as f64
                 } else {
@@ -158,7 +154,6 @@ pub fn find_near_duplicate_sequences(
                     occurrences,
                     representative_texts,
                     avg_similarity: avg_sim,
-                    duration_secs: duration,
                 });
             }
         }

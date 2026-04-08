@@ -10,7 +10,6 @@ use crate::sequences::RepeatedSequence;
 pub struct Report<'a> {
     pub file_path: &'a str,
     pub total_entries: usize,
-    pub total_duration_secs: f64,
     pub exact_duplicates: &'a [DuplicateGroup],
     pub near_duplicates: &'a [NearDuplicateCluster],
     pub ngrams: &'a [NgramResult],
@@ -27,28 +26,6 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-fn compute_total_duration(entries: &[Transcription]) -> f64 {
-    if let (Some(first), Some(last)) = (entries.first(), entries.last()) {
-        last.end - first.start
-    } else {
-        0.0
-    }
-}
-
-fn format_duration(secs: f64) -> String {
-    let total = secs as u64;
-    let h = total / 3600;
-    let m = (total % 3600) / 60;
-    let s = total % 60;
-    if h > 0 {
-        format!("{}h {:02}m {:02}s", h, m, s)
-    } else if m > 0 {
-        format!("{}m {:02}s", m, s)
-    } else {
-        format!("{}s", s)
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn print_report(
     file_path: &str,
@@ -60,18 +37,12 @@ pub fn print_report(
     near_seqs: &[NearDuplicateSequence],
     top_n: usize,
 ) {
-    let total_duration = compute_total_duration(entries);
-
     // Header
     println!();
     println!("{}", "=".repeat(70));
     println!("  REPETITION ANALYSIS REPORT");
     println!("  File: {}", file_path);
-    println!(
-        "  Entries: {} transcriptions | Duration: {}",
-        entries.len(),
-        format_duration(total_duration)
-    );
+    println!("  Entries: {}", entries.len());
     println!("{}", "=".repeat(70));
 
     // Section 1: Exact Duplicates
@@ -83,15 +54,15 @@ pub fn print_report(
     println!();
 
     for (i, group) in duplicates.iter().take(top_n).enumerate() {
-        let first_ts = &entries[group.indices[0]].start_formatted;
-        let last_ts = &entries[*group.indices.last().unwrap()].start_formatted;
         println!(
             "  {:>3}. {:>3}x | \"{}\"",
             i + 1,
             group.count,
             truncate(&group.canonical_text, 120)
         );
-        println!("        First: {} | Last: {}", first_ts, last_ts);
+        let first_id = &entries[group.indices[0]].id;
+        let last_id = &entries[*group.indices.last().unwrap()].id;
+        println!("        First: id={} | Last: id={}", first_id, last_id);
         println!();
     }
 
@@ -148,25 +119,24 @@ pub fn print_report(
 
     for (i, seq) in sequences.iter().take(top_n).enumerate() {
         println!(
-            "  {:>3}. {:>3}x | {}-entry block (~{})",
+            "  {:>3}. {:>3}x | {}-entry block",
             i + 1,
             seq.occurrences.len(),
             seq.length,
-            format_duration(seq.duration_secs)
         );
 
         for (j, text) in seq.entry_texts.iter().enumerate() {
             println!("        [{}] \"{}\"", j + 1, truncate(text, 100));
         }
 
-        // Show occurrence timestamps
-        let timestamps: Vec<String> = seq
+        // Show occurrence start indices
+        let indices: Vec<String> = seq
             .occurrences
             .iter()
             .take(10)
-            .map(|o| o.start_time.clone())
+            .map(|o| o.start_index.to_string())
             .collect();
-        print!("        At: {}", timestamps.join(", "));
+        print!("        At index: {}", indices.join(", "));
         if seq.occurrences.len() > 10 {
             print!(" ... +{} more", seq.occurrences.len() - 10);
         }
@@ -183,19 +153,18 @@ pub fn print_report(
 
     for (i, seq) in near_seqs.iter().take(top_n).enumerate() {
         println!(
-            "  {:>3}. {:>3}x | {}-entry block (~{}) | avg similarity: {:.1}%",
+            "  {:>3}. {:>3}x | {}-entry block | avg similarity: {:.1}%",
             i + 1,
             seq.occurrences.len(),
             seq.length,
-            format_duration(seq.duration_secs),
             seq.avg_similarity * 100.0
         );
 
         for (occ_idx, occ) in seq.occurrences.iter().take(3).enumerate() {
             println!(
-                "        Occurrence {} (at {}):",
+                "        Occurrence {} (index {}):",
                 occ_idx + 1,
-                occ.start_time
+                occ.start_index
             );
             for (j, text) in occ.entry_texts.iter().enumerate() {
                 println!("          [{}] \"{}\"", j + 1, truncate(text, 90));
@@ -219,7 +188,7 @@ pub fn print_report(
 
     if let Some(top_ng) = ngrams.first() {
         println!(
-            "  Most repeated phrase:     \"{}\" ({}x)",
+            "  Most repeated phrase:         \"{}\" ({}x)",
             truncate(&top_ng.ngram, 60),
             top_ng.count
         );
@@ -227,30 +196,9 @@ pub fn print_report(
 
     if let Some(top_seq) = sequences.first() {
         println!(
-            "  Most repeated block:      {}-entry block ({}x, ~{} each)",
+            "  Most repeated block:          {}-entry block ({}x)",
             top_seq.length,
             top_seq.occurrences.len(),
-            format_duration(top_seq.duration_secs)
-        );
-    }
-
-    // Estimate repetition time from exact duplicates
-    let mut dup_time = 0.0;
-    for group in duplicates {
-        // Each occurrence beyond the first is a repetition
-        let extra = group.count - 1;
-        for &idx in group.indices.iter().skip(1).take(extra) {
-            dup_time += entries[idx].end - entries[idx].start;
-        }
-    }
-
-    if total_duration > 0.0 {
-        let pct = (dup_time / total_duration) * 100.0;
-        println!(
-            "  Est. exact-duplicate time: {} of {} ({:.1}%)",
-            format_duration(dup_time),
-            format_duration(total_duration),
-            pct
         );
     }
 
@@ -267,12 +215,9 @@ pub fn print_json_report(
     sequences: &[RepeatedSequence],
     near_seqs: &[NearDuplicateSequence],
 ) {
-    let total_duration = compute_total_duration(entries);
-
     let report = Report {
         file_path,
         total_entries: entries.len(),
-        total_duration_secs: total_duration,
         exact_duplicates: duplicates,
         near_duplicates: near_dupes,
         ngrams,

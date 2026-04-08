@@ -8,7 +8,6 @@ use crate::similarity::normalize;
 #[derive(Debug, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
-    pub start_time: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -16,7 +15,6 @@ pub struct RepeatedSequence {
     pub length: usize,
     pub occurrences: Vec<SequenceOccurrence>,
     pub entry_texts: Vec<String>,
-    pub duration_secs: f64,
 }
 
 fn fingerprint(text: &str) -> String {
@@ -71,17 +69,13 @@ pub fn find_repeated_sequences(
                 .iter()
                 .map(|&start_idx| SequenceOccurrence {
                     start_index: start_idx,
-                    start_time: entries[start_idx].start_formatted.clone(),
                 })
                 .collect();
-
-            let duration = entries[filtered[0] + seq_len - 1].end - entries[filtered[0]].start;
 
             all_sequences.push(RepeatedSequence {
                 length: seq_len,
                 occurrences,
                 entry_texts,
-                duration_secs: duration,
             });
         }
     }

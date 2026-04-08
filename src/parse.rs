@@ -1,62 +1,67 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-#[derive(Debug, Deserialize)]
-struct RawEntry {
-    #[serde(rename = "type")]
-    entry_type: String,
-    start: Option<f64>,
-    start_formatted: Option<String>,
-    text: Option<String>,
-    end: Option<f64>,
-    end_formatted: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize)]
-#[allow(dead_code)]
 pub struct Transcription {
     pub index: usize,
-    pub start: f64,
-    pub start_formatted: String,
+    pub id: String,
     pub text: String,
-    pub end: f64,
-    pub end_formatted: String,
 }
 
-pub fn parse_jsonl(path: &Path) -> Vec<Transcription> {
+pub struct ParseOptions {
+    pub text_key: String,
+    pub id_key: Option<String>,
+    pub filter_key: Option<String>,
+    pub filter_value: Option<String>,
+}
+
+pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
     let file = File::open(path).expect("Failed to open JSONL file");
     let reader = BufReader::new(file);
     let mut transcriptions = Vec::new();
     let mut idx = 0;
 
-    for line in reader.lines() {
+    for (line_num, line) in reader.lines().enumerate() {
         let line = line.expect("Failed to read line");
-        let entry: RawEntry = match serde_json::from_str(&line) {
-            Ok(e) => e,
+        let obj: Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
             Err(_) => continue,
         };
 
-        if entry.entry_type == "transcription"
-            && let (Some(start), Some(start_fmt), Some(text), Some(end), Some(end_fmt)) = (
-                entry.start,
-                entry.start_formatted,
-                entry.text,
-                entry.end,
-                entry.end_formatted,
-            )
-        {
-            transcriptions.push(Transcription {
-                index: idx,
-                start,
-                start_formatted: start_fmt,
-                text,
-                end,
-                end_formatted: end_fmt,
-            });
-            idx += 1;
+        // Apply filter if configured
+        if let (Some(fk), Some(fv)) = (&opts.filter_key, &opts.filter_value) {
+            match obj.get(fk) {
+                Some(Value::String(s)) if s == fv => {}
+                _ => continue,
+            }
         }
+
+        // Extract text
+        let text = match obj.get(&opts.text_key) {
+            Some(Value::String(s)) => s.clone(),
+            _ => continue,
+        };
+
+        // Extract id
+        let id = if let Some(id_key) = &opts.id_key {
+            match obj.get(id_key) {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Number(n)) => n.to_string(),
+                _ => (line_num + 1).to_string(),
+            }
+        } else {
+            (line_num + 1).to_string()
+        };
+
+        transcriptions.push(Transcription {
+            index: idx,
+            id,
+            text,
+        });
+        idx += 1;
     }
 
     transcriptions

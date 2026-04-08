@@ -4,10 +4,11 @@ use crate::parse::Transcription;
 use crate::sequences::RepeatedSequence;
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        let truncated: String = s.chars().take(max_len).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -69,10 +70,7 @@ pub fn print_report(
             group.count,
             truncate(&group.canonical_text, 120)
         );
-        println!(
-            "        First: {} | Last: {}",
-            first_ts, last_ts
-        );
+        println!("        First: {} | Last: {}", first_ts, last_ts);
         println!();
     }
 
@@ -96,7 +94,10 @@ pub fn print_report(
             println!("        [{}] \"{}\"", idx + 1, truncate(text, 100));
         }
         if cluster.members.len() > 5 {
-            println!("        ... and {} more variants", cluster.members.len() - 5);
+            println!(
+                "        ... and {} more variants",
+                cluster.members.len() - 5
+            );
         }
         println!();
     }
@@ -155,14 +156,8 @@ pub fn print_report(
     // Section 5: Summary
     println!("--- 5. SUMMARY ---");
     println!();
-    println!(
-        "  Exact duplicate groups:   {}",
-        duplicates.len()
-    );
-    println!(
-        "  Near-duplicate clusters:  {}",
-        near_dupes.len()
-    );
+    println!("  Exact duplicate groups:   {}", duplicates.len());
+    println!("  Near-duplicate clusters:  {}", near_dupes.len());
 
     if let Some(top_ng) = ngrams.first() {
         println!(

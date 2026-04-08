@@ -2,7 +2,13 @@ pub fn normalize(text: &str) -> String {
     let lower = text.to_lowercase();
     let cleaned: String = lower
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '\'' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -47,13 +53,7 @@ pub fn levenshtein_bounded(a: &[u8], b: &[u8], max_dist: usize) -> Option<usize>
 
         for j in j_start.max(1)..=j_end.min(n) {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            let val = if j > 0 {
-                (prev[j] + 1)
-                    .min(curr[j - 1] + 1)
-                    .min(prev[j - 1] + cost)
-            } else {
-                prev[j - 1] + cost
-            };
+            let val = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
             curr[j] = val;
             row_min = row_min.min(val);
         }

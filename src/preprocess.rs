@@ -18,25 +18,22 @@ fn process_entry(
     text_key: &str,
     filter: &Option<ParsedFilter>,
     new_id_key: &Option<String>,
-) -> bool {
+) -> Result<bool, String> {
     // Apply filter
     if let Some(f) = filter {
         match obj.get(&f.key) {
             Some(v) => match filter_matches(v, f) {
                 Ok(true) => {}
-                Ok(false) => return false,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
+                Ok(false) => return Ok(false),
+                Err(e) => return Err(e),
             },
-            None => return false,
+            None => return Ok(false),
         }
     }
 
     // Skip entries missing the text key
     if obj.get(text_key).and_then(|v| v.as_str()).is_none() {
-        return false;
+        return Ok(false);
     }
 
     // Insert UUID if requested
@@ -46,34 +43,36 @@ fn process_entry(
         map.insert(key.clone(), Value::String(Uuid::now_v7().to_string()));
     }
 
-    true
+    Ok(true)
 }
 
-pub fn run_preprocess(config: &PreprocessConfig) {
+pub fn run_preprocess(config: &PreprocessConfig) -> Result<(), String> {
     let parsed_filter = parse_filter(&config.filter);
-    let file = File::open(Path::new(&config.file)).expect("Failed to open JSONL file");
+    let file =
+        File::open(Path::new(&config.file)).map_err(|e| format!("Failed to open JSONL file: {e}"))?;
     let reader = BufReader::new(file);
     let mut stdout = std::io::BufWriter::new(std::io::stdout().lock());
     let mut count = 0usize;
 
     for line in reader.lines() {
-        let line = line.expect("Failed to read line");
+        let line = line.map_err(|e| format!("Failed to read line: {e}"))?;
         let mut obj: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        if !process_entry(&mut obj, &config.text_key, &parsed_filter, &config.new_id_key) {
+        if !process_entry(&mut obj, &config.text_key, &parsed_filter, &config.new_id_key)? {
             continue;
         }
 
-        serde_json::to_writer(&mut stdout, &obj).expect("failed to serialize entry");
-        writeln!(stdout).expect("failed to write newline");
+        serde_json::to_writer(&mut stdout, &obj).map_err(|e| format!("failed to serialize entry: {e}"))?;
+        writeln!(stdout).map_err(|e| format!("failed to write newline: {e}"))?;
         count += 1;
     }
 
     drop(stdout);
     eprintln!("Wrote {count} entries");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -82,7 +81,7 @@ mod tests {
 
     fn apply(json: &str, text_key: &str, filter: &Option<ParsedFilter>, new_id_key: &Option<String>) -> Option<Value> {
         let mut obj: Value = serde_json::from_str(json).unwrap();
-        if process_entry(&mut obj, text_key, filter, new_id_key) {
+        if process_entry(&mut obj, text_key, filter, new_id_key).unwrap() {
             Some(obj)
         } else {
             None

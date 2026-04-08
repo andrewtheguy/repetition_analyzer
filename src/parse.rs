@@ -120,14 +120,16 @@ pub struct ParseOptions {
     pub filter: Option<ParsedFilter>,
 }
 
-pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
-    let file = File::open(path).expect("Failed to open JSONL file");
+pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Result<Vec<Transcription>, String> {
+    let file = File::open(path).map_err(|e| format!("Failed to open JSONL file: {e}"))?;
     let reader = BufReader::new(file);
     let mut transcriptions = Vec::new();
+    let mut seen_ids: Option<std::collections::HashSet<String>> =
+        if opts.id_key.is_some() { Some(std::collections::HashSet::new()) } else { None };
     let mut idx = 0;
 
     for (line_num, line) in reader.lines().enumerate() {
-        let line = line.expect("Failed to read line");
+        let line = line.map_err(|e| format!("Failed to read line {}: {e}", line_num + 1))?;
         let obj: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
@@ -139,10 +141,7 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
                 Some(v) => match filter_matches(v, f) {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => {
-                        eprintln!("Error: line {}: {e}", line_num + 1);
-                        std::process::exit(1);
-                    }
+                    Err(e) => return Err(format!("line {}: {e}", line_num + 1)),
                 },
                 None => continue,
             }
@@ -165,6 +164,12 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
             (line_num + 1).to_string()
         };
 
+        if let Some(seen) = &mut seen_ids
+            && !seen.insert(id.clone())
+        {
+            return Err(format!("line {}: duplicate id '{id}'", line_num + 1));
+        }
+
         transcriptions.push(Transcription {
             index: idx,
             id,
@@ -173,7 +178,7 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
         idx += 1;
     }
 
-    transcriptions
+    Ok(transcriptions)
 }
 
 #[cfg(test)]
@@ -197,7 +202,7 @@ mod tests {
             id_key: None,
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "hello world");
         assert_eq!(entries[1].text, "goodbye");
@@ -213,7 +218,7 @@ mod tests {
             id_key: None,
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].text, "foo bar");
     }
@@ -226,7 +231,7 @@ mod tests {
             id_key: None,
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].text, "kept");
     }
@@ -247,7 +252,7 @@ mod tests {
                 filter_type: FilterType::Str,
             }),
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "kept");
         assert_eq!(entries[1].text, "also kept");
@@ -269,7 +274,7 @@ mod tests {
                 filter_type: FilterType::Bool,
             }),
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "yes");
         assert_eq!(entries[1].text, "also yes");
@@ -291,7 +296,7 @@ mod tests {
                 filter_type: FilterType::Int,
             }),
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "one");
         assert_eq!(entries[1].text, "another one");
@@ -313,7 +318,7 @@ mod tests {
                 filter_type: FilterType::Float,
             }),
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].text, "half");
         assert_eq!(entries[1].text, "also half");
@@ -347,7 +352,7 @@ mod tests {
                 filter_type: FilterType::Int,
             }),
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].text, "int one");
     }
@@ -360,7 +365,7 @@ mod tests {
             id_key: None,
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries[0].id, "2"); // line 2 (1-indexed)
     }
 
@@ -372,8 +377,56 @@ mod tests {
             id_key: Some("uid".to_string()),
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries[0].id, "abc-123");
+    }
+
+    #[test]
+    fn parse_unique_ids_accepted() {
+        let f = write_temp_jsonl(&[
+            r#"{"text": "a", "uid": "id-1"}"#,
+            r#"{"text": "b", "uid": "id-2"}"#,
+            r#"{"text": "c", "uid": "id-3"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: Some("uid".to_string()),
+            filter: None,
+        };
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn parse_no_uniqueness_check_without_id_key() {
+        // Line-number based ids are inherently unique, no check needed
+        let f = write_temp_jsonl(&[
+            r#"{"text": "a"}"#,
+            r#"{"text": "b"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: None,
+        };
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn parse_duplicate_id_returns_err() {
+        let f = write_temp_jsonl(&[
+            r#"{"text": "a", "uid": "same-id"}"#,
+            r#"{"text": "b", "uid": "same-id"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: Some("uid".to_string()),
+            filter: None,
+        };
+        let result = parse_jsonl(f.path(), &opts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("duplicate id"));
     }
 
     #[test]
@@ -384,7 +437,7 @@ mod tests {
             id_key: None,
             filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts);
+        let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].text, "valid");
     }

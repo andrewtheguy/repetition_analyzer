@@ -166,7 +166,7 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Command::Analyze {
             file,
             min_ngram,
@@ -182,24 +182,22 @@ fn main() {
             id_key,
             filter,
             format,
-        } => {
-            run_analyze(&AnalyzeConfig {
-                file,
-                min_ngram,
-                max_ngram,
-                similarity_threshold,
-                top_n,
-                min_count,
-                min_seq_len,
-                max_seq_len,
-                min_seq_occurrences,
-                seq_similarity_threshold,
-                text_key,
-                id_key,
-                filter,
-                format,
-            });
-        }
+        } => run_analyze(&AnalyzeConfig {
+            file,
+            min_ngram,
+            max_ngram,
+            similarity_threshold,
+            top_n,
+            min_count,
+            min_seq_len,
+            max_seq_len,
+            min_seq_occurrences,
+            seq_similarity_threshold,
+            text_key,
+            id_key,
+            filter,
+            format,
+        }),
         Command::Enrich {
             source,
             result,
@@ -210,36 +208,37 @@ fn main() {
             text_key,
             filter,
             id_key,
-        } => {
-            enrich::run_enrich(&enrich::EnrichConfig {
-                source,
-                result,
-                start_key,
-                end_key,
-                start_formatted_key,
-                end_formatted_key,
-                text_key,
-                filter,
-                id_key,
-            });
-        }
+        } => enrich::run_enrich(&enrich::EnrichConfig {
+            source,
+            result,
+            start_key,
+            end_key,
+            start_formatted_key,
+            end_formatted_key,
+            text_key,
+            filter,
+            id_key,
+        }),
         Command::Preprocess {
             file,
             text_key,
             filter,
             new_id_key,
-        } => {
-            preprocess::run_preprocess(&preprocess::PreprocessConfig {
-                file,
-                text_key,
-                filter,
-                new_id_key,
-            });
-        }
+        } => preprocess::run_preprocess(&preprocess::PreprocessConfig {
+            file,
+            text_key,
+            filter,
+            new_id_key,
+        }),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 
-fn run_analyze(config: &AnalyzeConfig) {
+fn run_analyze(config: &AnalyzeConfig) -> Result<(), String> {
     let start = Instant::now();
 
     // Parse
@@ -250,7 +249,7 @@ fn run_analyze(config: &AnalyzeConfig) {
         id_key: config.id_key.clone(),
         filter: parse_filter(&config.filter),
     };
-    let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts);
+    let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts)?;
     let include_ids = config.id_key.is_some();
     eprintln!(
         "Loaded {} entries ({:.2}s)",
@@ -342,4 +341,5 @@ fn run_analyze(config: &AnalyzeConfig) {
         Format::Json => report::print_json_report(&data),
         Format::Human => report::print_report(&data, config.top_n),
     }
+    Ok(())
 }

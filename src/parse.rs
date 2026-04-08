@@ -119,9 +119,9 @@ pub struct Transcription {
 pub struct ParseOptions {
     pub text_key: String,
     pub id_key: Option<String>,
-    pub filter: Option<ParsedFilter>,
 }
 
+/// Parse a preprocessed JSONL file. Every line must be valid JSON with the text key present.
 pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec<Transcription>> {
     let file = File::open(path).map_err(|e| AppError::FileOpen {
         path: path.display().to_string(),
@@ -131,42 +131,27 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec
     let mut transcriptions = Vec::new();
     let mut seen_ids: Option<std::collections::HashSet<String>> =
         if opts.id_key.is_some() { Some(std::collections::HashSet::new()) } else { None };
-    let mut idx = 0;
 
     for (line_num, line) in reader.lines().enumerate() {
         let line = line.map_err(|e| AppError::LineRead {
             line: line_num + 1,
             source: e,
         })?;
-        let obj: Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
+        let obj: Value = serde_json::from_str(&line).map_err(|e| AppError::InvalidJson {
+            line: line_num + 1,
+            source: e,
+        })?;
 
-        // Apply filter if configured
-        if let Some(f) = &opts.filter {
-            match obj.get(&f.key) {
-                Some(v) => match filter_matches(v, f) {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(message) => {
-                        return Err(AppError::FilterMismatch {
-                            line: line_num + 1,
-                            message,
-                        })
-                    }
-                },
-                None => continue,
-            }
-        }
-
-        // Extract text
         let text = match obj.get(&opts.text_key) {
             Some(Value::String(s)) => s.clone(),
-            _ => continue,
+            _ => {
+                return Err(AppError::MissingTextField {
+                    line: line_num + 1,
+                    key: opts.text_key.clone(),
+                })
+            }
         };
 
-        // Extract id
         let id = if let Some(id_key) = &opts.id_key {
             match obj.get(id_key) {
                 Some(Value::String(s)) => s.clone(),
@@ -187,11 +172,10 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec
         }
 
         transcriptions.push(Transcription {
-            index: idx,
+            index: line_num,
             id,
             text,
         });
-        idx += 1;
     }
 
     Ok(transcriptions)
@@ -216,7 +200,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
@@ -232,7 +215,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "content".to_string(),
             id_key: None,
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 1);
@@ -240,104 +222,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_skips_missing_text_key() {
-        let f = write_temp_jsonl(&[r#"{"text": "kept"}"#, r#"{"other": "skipped"}"#]);
+    fn parse_errors_on_missing_text_key() {
+        let f = write_temp_jsonl(&[r#"{"text": "kept"}"#, r#"{"other": "no text"}"#]);
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter: None,
         };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "kept");
-    }
-
-    #[test]
-    fn parse_with_filter() {
-        let f = write_temp_jsonl(&[
-            r#"{"type": "meta", "text": "ignored"}"#,
-            r#"{"type": "transcription", "text": "kept"}"#,
-            r#"{"type": "transcription", "text": "also kept"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "type".to_string(),
-                value: "transcription".to_string(),
-                filter_type: FilterType::Str,
-            }),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].text, "kept");
-        assert_eq!(entries[1].text, "also kept");
-    }
-
-    #[test]
-    fn parse_with_bool_filter() {
-        let f = write_temp_jsonl(&[
-            r#"{"active": true, "text": "yes"}"#,
-            r#"{"active": false, "text": "no"}"#,
-            r#"{"active": true, "text": "also yes"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "active".to_string(),
-                value: "true".to_string(),
-                filter_type: FilterType::Bool,
-            }),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].text, "yes");
-        assert_eq!(entries[1].text, "also yes");
-    }
-
-    #[test]
-    fn parse_with_int_filter() {
-        let f = write_temp_jsonl(&[
-            r#"{"status": 1, "text": "one"}"#,
-            r#"{"status": 2, "text": "two"}"#,
-            r#"{"status": 1, "text": "another one"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "status".to_string(),
-                value: "1".to_string(),
-                filter_type: FilterType::Int,
-            }),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].text, "one");
-        assert_eq!(entries[1].text, "another one");
-    }
-
-    #[test]
-    fn parse_with_float_filter() {
-        let f = write_temp_jsonl(&[
-            r#"{"score": 0.5, "text": "half"}"#,
-            r#"{"score": 1.0, "text": "full"}"#,
-            r#"{"score": 0.5, "text": "also half"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "score".to_string(),
-                value: "0.5".to_string(),
-                filter_type: FilterType::Float,
-            }),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].text, "half");
-        assert_eq!(entries[1].text, "also half");
+        let result = parse_jsonl(f.path(), &opts);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::MissingTextField { .. }));
     }
 
     #[test]
@@ -354,35 +247,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_filter_null_value_skips() {
-        let f = write_temp_jsonl(&[
-            r#"{"status": null, "text": "null status"}"#,
-            r#"{"status": 1, "text": "int one"}"#,
-        ]);
-        let opts = ParseOptions {
-            text_key: "text".to_string(),
-            id_key: None,
-            filter: Some(ParsedFilter {
-                key: "status".to_string(),
-                value: "1".to_string(),
-                filter_type: FilterType::Int,
-            }),
-        };
-        let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "int one");
-    }
-
-    #[test]
     fn parse_id_from_line_number() {
-        let f = write_temp_jsonl(&[r#"{"other": "skip"}"#, r#"{"text": "hello"}"#]);
+        let f = write_temp_jsonl(&[r#"{"text": "first"}"#, r#"{"text": "hello"}"#]);
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries[0].id, "2"); // line 2 (1-indexed)
+        assert_eq!(entries[0].id, "1");
+        assert_eq!(entries[1].id, "2");
     }
 
     #[test]
@@ -391,7 +264,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: Some("uid".to_string()),
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries[0].id, "abc-123");
@@ -407,7 +279,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: Some("uid".to_string()),
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 3);
@@ -415,7 +286,6 @@ mod tests {
 
     #[test]
     fn parse_no_uniqueness_check_without_id_key() {
-        // Line-number based ids are inherently unique, no check needed
         let f = write_temp_jsonl(&[
             r#"{"text": "a"}"#,
             r#"{"text": "b"}"#,
@@ -423,7 +293,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
         assert_eq!(entries.len(), 2);
@@ -438,7 +307,6 @@ mod tests {
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: Some("uid".to_string()),
-            filter: None,
         };
         let result = parse_jsonl(f.path(), &opts);
         assert!(result.is_err());
@@ -449,15 +317,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_skips_invalid_json() {
+    fn parse_errors_on_invalid_json() {
         let f = write_temp_jsonl(&["not json", r#"{"text": "valid"}"#]);
         let opts = ParseOptions {
             text_key: "text".to_string(),
             id_key: None,
-            filter: None,
+        };
+        let result = parse_jsonl(f.path(), &opts);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::InvalidJson { .. }));
+    }
+
+    #[test]
+    fn parse_index_matches_line_number() {
+        let f = write_temp_jsonl(&[
+            r#"{"text": "a"}"#,
+            r#"{"text": "b"}"#,
+            r#"{"text": "c"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
         };
         let entries = parse_jsonl(f.path(), &opts).unwrap();
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].text, "valid");
+        assert_eq!(entries[0].index, 0);
+        assert_eq!(entries[1].index, 1);
+        assert_eq!(entries[2].index, 2);
     }
 }

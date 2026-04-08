@@ -115,10 +115,10 @@ pub fn find_near_duplicate_sequences(
                     }
                 }
 
-                // Un-assign singletons so they can join other clusters
+                // Un-assign undersized clusters so members can join other clusters
                 if cluster.len() < min_occurrences {
-                    if cluster.len() == 1 {
-                        assigned.remove(&i);
+                    for &pos in &cluster {
+                        assigned.remove(&pos);
                     }
                     continue;
                 }

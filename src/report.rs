@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::exact::{DuplicateGroup, NearDuplicateCluster};
+use crate::near_sequences::NearDuplicateSequence;
 use crate::ngrams::NgramResult;
 use crate::parse::Transcription;
 use crate::sequences::RepeatedSequence;
@@ -14,6 +15,7 @@ pub struct Report<'a> {
     pub near_duplicates: &'a [NearDuplicateCluster],
     pub ngrams: &'a [NgramResult],
     pub repeated_sequences: &'a [RepeatedSequence],
+    pub near_duplicate_sequences: &'a [NearDuplicateSequence],
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
@@ -47,6 +49,7 @@ fn format_duration(secs: f64) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn print_report(
     file_path: &str,
     entries: &[Transcription],
@@ -54,6 +57,7 @@ pub fn print_report(
     near_dupes: &[NearDuplicateCluster],
     ngrams: &[NgramResult],
     sequences: &[RepeatedSequence],
+    near_seqs: &[NearDuplicateSequence],
     top_n: usize,
 ) {
     let total_duration = compute_total_duration(entries);
@@ -170,11 +174,48 @@ pub fn print_report(
         println!();
     }
 
-    // Section 5: Summary
-    println!("--- 5. SUMMARY ---");
+    // Section 5: Near-Duplicate Sequences
+    println!(
+        "--- 5. NEAR-DUPLICATE SEGMENT BLOCKS ({} unique patterns) ---",
+        near_seqs.len()
+    );
     println!();
-    println!("  Exact duplicate groups:   {}", duplicates.len());
-    println!("  Near-duplicate clusters:  {}", near_dupes.len());
+
+    for (i, seq) in near_seqs.iter().take(top_n).enumerate() {
+        println!(
+            "  {:>3}. {:>3}x | {}-entry block (~{}) | avg similarity: {:.1}%",
+            i + 1,
+            seq.occurrences.len(),
+            seq.length,
+            format_duration(seq.duration_secs),
+            seq.avg_similarity * 100.0
+        );
+
+        for (occ_idx, occ) in seq.occurrences.iter().take(3).enumerate() {
+            println!(
+                "        Occurrence {} (at {}):",
+                occ_idx + 1,
+                occ.start_time
+            );
+            for (j, text) in occ.entry_texts.iter().enumerate() {
+                println!("          [{}] \"{}\"", j + 1, truncate(text, 90));
+            }
+        }
+        if seq.occurrences.len() > 3 {
+            println!(
+                "        ... +{} more occurrences",
+                seq.occurrences.len() - 3
+            );
+        }
+        println!();
+    }
+
+    // Section 6: Summary
+    println!("--- 6. SUMMARY ---");
+    println!();
+    println!("  Exact duplicate groups:       {}", duplicates.len());
+    println!("  Near-duplicate clusters:      {}", near_dupes.len());
+    println!("  Near-duplicate seq. patterns: {}", near_seqs.len());
 
     if let Some(top_ng) = ngrams.first() {
         println!(
@@ -224,6 +265,7 @@ pub fn print_json_report(
     near_dupes: &[NearDuplicateCluster],
     ngrams: &[NgramResult],
     sequences: &[RepeatedSequence],
+    near_seqs: &[NearDuplicateSequence],
 ) {
     let total_duration = compute_total_duration(entries);
 
@@ -235,6 +277,7 @@ pub fn print_json_report(
         near_duplicates: near_dupes,
         ngrams,
         repeated_sequences: sequences,
+        near_duplicate_sequences: near_seqs,
     };
 
     println!(

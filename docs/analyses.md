@@ -66,3 +66,25 @@ Detects contiguous multi-entry blocks that repeat elsewhere in the broadcast. Un
 | `--min-seq-len` | Minimum number of consecutive entries in a block. |
 | `--max-seq-len` | Maximum block length. Larger values can find longer repeated segments but take more time. |
 | `--min-seq-occurrences` | How many times a block must appear to be reported. |
+
+## 5. Near-Duplicate Sequences (Block-Level Fuzzy Matching)
+
+Detects contiguous multi-entry blocks that repeat with minor text variations. This fills the gap between exact sequence matching (which requires identical fingerprints) and single-entry near-duplicate clustering (which doesn't span entry boundaries). Useful for catching recurring segments like news reports, traffic updates, or ad reads where transcription varies slightly between airings.
+
+**How it works:**
+
+- For each block length from `--max-seq-len` down to `--min-seq-len`, a sliding window generates candidate blocks.
+- Candidate blocks are bucketed by the first three words of the first entry (same bucketing strategy as single-entry near-duplicate detection) to avoid exhaustive pairwise comparison.
+- Within each bucket, blocks are compared entry-by-entry: every corresponding entry pair must independently meet the similarity threshold. This preserves alignment (entry boundaries are stable from the speech-to-text segmentation) and allows early termination when any entry pair fails.
+- Blocks are grouped using greedy star-clustering: a representative is chosen, and all sufficiently similar blocks are added to its cluster.
+- Clusters where every occurrence is already covered by an exact repeated sequence are filtered out to avoid redundant reporting.
+- Shorter near-duplicate sequences that are fully contained within longer ones (with equal or greater occurrence counts) are suppressed.
+
+**Tuning:**
+
+| Option | Effect |
+|---|---|
+| `--seq-similarity-threshold` | Per-entry similarity threshold for block matching. Default is 0.80, slightly lower than the single-entry threshold (0.85), because requiring ALL entries to pass is already a strict aggregate constraint. |
+| `--min-seq-len` | Minimum entries in a block (shared with exact sequences). |
+| `--max-seq-len` | Maximum entries in a block (shared with exact sequences). |
+| `--min-seq-occurrences` | Minimum times a block must repeat (shared with exact sequences). |

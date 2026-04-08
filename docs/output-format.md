@@ -12,7 +12,8 @@ This is the default. The report contains five sections:
 2. **Near-Duplicate Clusters** -- Each cluster shows a representative sample and up to five variant texts.
 3. **Most Repeated Phrases** -- N-grams sorted by frequency, showing word count and entry count.
 4. **Repeated Segment Blocks** -- Each block shows how many entries it spans, how many times it repeats, the duration, the text of each entry, and occurrence timestamps.
-5. **Summary** -- Aggregate statistics including total duplicate groups, clusters, the most repeated phrase and block, and an estimate of how much broadcast time is consumed by exact duplicates.
+5. **Near-Duplicate Segment Blocks** -- Each pattern shows occurrence count, block length, duration, average similarity, and up to three occurrences with full entry texts so variations are visible side-by-side.
+6. **Summary** -- Aggregate statistics including total duplicate groups, clusters, near-duplicate sequence patterns, the most repeated phrase and block, and an estimate of how much broadcast time is consumed by exact duplicates.
 
 The `--top-n` option limits how many results appear per section.
 
@@ -28,7 +29,8 @@ Produces a single JSON object on stdout. The structure:
   "exact_duplicates": [ ... ],
   "near_duplicates": [ ... ],
   "ngrams": [ ... ],
-  "repeated_sequences": [ ... ]
+  "repeated_sequences": [ ... ],
+  "near_duplicate_sequences": [ ... ]
 }
 ```
 
@@ -85,6 +87,40 @@ Each member is a tuple of `[entry_index, text]`.
   "duration_secs": 15.0
 }
 ```
+
+### `near_duplicate_sequences`
+
+```json
+{
+  "length": 2,
+  "occurrences": [
+    {
+      "start_index": 150,
+      "start_time": "01:59:02",
+      "entry_texts": [
+        "Termite damage may not even be covered by your home insurance policy...",
+        "Call Pacific Coast Termite today at 800 Pacific..."
+      ]
+    },
+    {
+      "start_index": 320,
+      "start_time": "02:14:51",
+      "entry_texts": [
+        "Termite damage may not even be covered by your home insurance policy...",
+        "Cau Pacific Coast termite today at 800 Pacific..."
+      ]
+    }
+  ],
+  "representative_texts": [
+    "Termite damage may not even be covered by your home insurance policy...",
+    "Call Pacific Coast Termite today at 800 Pacific..."
+  ],
+  "avg_similarity": 0.88,
+  "duration_secs": 14.0
+}
+```
+
+Each occurrence stores its own `entry_texts` since the whole point is that the texts differ between occurrences. The `representative_texts` field contains the text from the first occurrence for quick reference.
 
 ### Notes
 

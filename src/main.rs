@@ -1,4 +1,5 @@
 mod exact;
+mod near_sequences;
 mod ngrams;
 mod parse;
 mod report;
@@ -55,6 +56,10 @@ struct Cli {
     /// Minimum occurrences for repeated sequences
     #[arg(long, default_value_t = 2)]
     min_seq_occurrences: usize,
+
+    /// Similarity threshold for near-duplicate sequences (0.0 to 1.0)
+    #[arg(long, default_value_t = 0.80)]
+    seq_similarity_threshold: f64,
 
     /// Output format
     #[arg(long, value_enum, default_value_t = Format::Human)]
@@ -117,6 +122,22 @@ fn main() {
         t.elapsed().as_secs_f64()
     );
 
+    // Near-duplicate sequences
+    let t = Instant::now();
+    let near_seqs = near_sequences::find_near_duplicate_sequences(
+        &entries,
+        cli.min_seq_len,
+        cli.max_seq_len,
+        cli.seq_similarity_threshold,
+        cli.min_seq_occurrences,
+        &repeated_seqs,
+    );
+    eprintln!(
+        "Found {} near-duplicate sequence patterns ({:.2}s)",
+        near_seqs.len(),
+        t.elapsed().as_secs_f64()
+    );
+
     let elapsed = start.elapsed();
     eprintln!("Analysis complete in {:.2}s", elapsed.as_secs_f64());
 
@@ -129,6 +150,7 @@ fn main() {
             &near_dupes,
             &ngram_results,
             &repeated_seqs,
+            &near_seqs,
         ),
         Format::Human => report::print_report(
             &cli.file,
@@ -137,6 +159,7 @@ fn main() {
             &near_dupes,
             &ngram_results,
             &repeated_seqs,
+            &near_seqs,
             cli.top_n,
         ),
     }

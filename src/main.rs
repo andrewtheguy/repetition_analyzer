@@ -49,6 +49,10 @@ struct Cli {
     /// Minimum occurrences for repeated sequences
     #[arg(long, default_value_t = 2)]
     min_seq_occurrences: usize,
+
+    /// Output format: "human" or "json"
+    #[arg(long, default_value = "human")]
+    format: String,
 }
 
 fn main() {
@@ -111,13 +115,23 @@ fn main() {
     eprintln!("Analysis complete in {:.2}s", elapsed.as_secs_f64());
 
     // Print report
-    report::print_report(
-        &cli.file,
-        &entries,
-        &duplicates,
-        &near_dupes,
-        &ngram_results,
-        &repeated_seqs,
-        cli.top_n,
-    );
+    match cli.format.as_str() {
+        "json" => report::print_json_report(
+            &cli.file,
+            &entries,
+            &duplicates,
+            &near_dupes,
+            &ngram_results,
+            &repeated_seqs,
+        ),
+        _ => report::print_report(
+            &cli.file,
+            &entries,
+            &duplicates,
+            &near_dupes,
+            &ngram_results,
+            &repeated_seqs,
+            cli.top_n,
+        ),
+    }
 }

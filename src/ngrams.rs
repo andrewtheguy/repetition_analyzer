@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::Serialize;
+
 use crate::parse::Transcription;
 use crate::similarity::normalize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct NgramResult {
     pub ngram: String,
     pub n: usize,

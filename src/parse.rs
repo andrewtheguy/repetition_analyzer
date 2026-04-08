@@ -19,21 +19,64 @@ pub struct ParsedFilter {
     pub filter_type: FilterType,
 }
 
+fn json_type_name(val: &Value) -> &'static str {
+    match val {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
 /// Check whether a JSON value matches a filter using its explicit type.
-pub fn filter_matches(json_val: &Value, filter: &ParsedFilter) -> bool {
+/// Returns Ok(true) on match, Ok(false) for null/missing, Err on type mismatch.
+pub fn filter_matches(json_val: &Value, filter: &ParsedFilter) -> Result<bool, String> {
+    if json_val.is_null() {
+        return Ok(false);
+    }
     match filter.filter_type {
-        FilterType::Str => matches!(json_val, Value::String(s) if s == &filter.value),
+        FilterType::Str => match json_val {
+            Value::String(s) => Ok(s == &filter.value),
+            _ => Err(format!(
+                "filter type mismatch for key '{}': expected string, got {}",
+                filter.key,
+                json_type_name(json_val)
+            )),
+        },
         FilterType::Bool => {
             let expected: bool = filter.value.parse().expect("invalid bool filter value");
-            matches!(json_val, Value::Bool(b) if *b == expected)
+            match json_val {
+                Value::Bool(b) => Ok(*b == expected),
+                _ => Err(format!(
+                    "filter type mismatch for key '{}': expected bool, got {}",
+                    filter.key,
+                    json_type_name(json_val)
+                )),
+            }
         }
         FilterType::Int => {
             let expected: i64 = filter.value.parse().expect("invalid int filter value");
-            json_val.as_i64() == Some(expected)
+            match json_val {
+                Value::Number(n) => Ok(n.as_i64() == Some(expected)),
+                _ => Err(format!(
+                    "filter type mismatch for key '{}': expected number, got {}",
+                    filter.key,
+                    json_type_name(json_val)
+                )),
+            }
         }
         FilterType::Float => {
             let expected: f64 = filter.value.parse().expect("invalid float filter value");
-            json_val.as_f64() == Some(expected)
+            match json_val {
+                Value::Number(n) => Ok(n.as_f64() == Some(expected)),
+                _ => Err(format!(
+                    "filter type mismatch for key '{}': expected number, got {}",
+                    filter.key,
+                    json_type_name(json_val)
+                )),
+            }
         }
     }
 }
@@ -93,8 +136,12 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Vec<Transcription> {
         // Apply filter if configured
         if let Some(f) = &opts.filter {
             match obj.get(&f.key) {
-                Some(v) if filter_matches(v, f) => {}
-                _ => continue,
+                Some(v) => match filter_matches(v, f) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(e) => panic!("line {}: {}", line_num + 1, e),
+                },
+                None => continue,
             }
         }
 
@@ -270,10 +317,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_filter_type_mismatch_skips() {
-        // int filter against string JSON value should not match
+    #[should_panic(expected = "filter type mismatch")]
+    fn parse_filter_type_mismatch_errors() {
         let f = write_temp_jsonl(&[
             r#"{"status": "1", "text": "string one"}"#,
+        ]);
+        let opts = ParseOptions {
+            text_key: "text".to_string(),
+            id_key: None,
+            filter: Some(ParsedFilter {
+                key: "status".to_string(),
+                value: "1".to_string(),
+                filter_type: FilterType::Int,
+            }),
+        };
+        parse_jsonl(f.path(), &opts);
+    }
+
+    #[test]
+    fn parse_filter_null_value_skips() {
+        let f = write_temp_jsonl(&[
+            r#"{"status": null, "text": "null status"}"#,
             r#"{"status": 1, "text": "int one"}"#,
         ]);
         let opts = ParseOptions {

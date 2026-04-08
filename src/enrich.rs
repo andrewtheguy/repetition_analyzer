@@ -38,8 +38,12 @@ fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) 
         // Apply filter
         if let Some(f) = filter {
             match obj.get(&f.key) {
-                Some(v) if filter_matches(v, f) => {}
-                _ => continue,
+                Some(v) => match filter_matches(v, f) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(e) => panic!("{}", e),
+                },
+                None => continue,
             }
         }
 

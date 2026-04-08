@@ -27,6 +27,7 @@ See [docs/input-format.md](docs/input-format.md) for the full schema and example
 2. **Near-Duplicates** -- Clusters entries whose text is highly similar (configurable threshold), catching minor variations.
 3. **Repeated Phrases (N-grams)** -- Finds word sequences that recur across many entries, with deduplication so longer phrases suppress redundant sub-phrases.
 4. **Repeated Sequences** -- Detects contiguous multi-entry blocks that appear more than once in the broadcast.
+5. **Near-Duplicate Sequences** -- Detects multi-entry blocks that repeat with minor text variations (e.g., recurring news/traffic reports where transcription differs slightly between airings).
 
 See [docs/analyses.md](docs/analyses.md) for how each analysis works.
 
@@ -49,6 +50,7 @@ See [docs/output-format.md](docs/output-format.md) for details on both formats.
 | `--min-seq-len` | 2 | Minimum entries in a repeated block |
 | `--max-seq-len` | 8 | Maximum entries in a repeated block |
 | `--min-seq-occurrences` | 2 | Minimum times a block must repeat |
+| `--seq-similarity-threshold` | 0.80 | Similarity ratio for near-duplicate sequence matching |
 | `--format` | human | Output format: `human` or `json` |
 
 ## Building

@@ -65,7 +65,7 @@ pub fn find_near_duplicates(
     let mut clusters: Vec<NearDuplicateCluster> = Vec::new();
 
     // Process buckets with multiple entries
-    for (_, bucket_indices) in &buckets {
+    for bucket_indices in buckets.values() {
         if bucket_indices.len() < 2 {
             continue;
         }

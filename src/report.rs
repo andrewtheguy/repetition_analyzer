@@ -55,10 +55,8 @@ pub fn print_report(
     // Section 1: Exact Duplicates
     println!();
     println!(
-        "{} 1. EXACT DUPLICATES ({} texts appear 2+ times) {}",
-        "---",
-        duplicates.len(),
-        "---"
+        "--- 1. EXACT DUPLICATES ({} texts appear 2+ times) ---",
+        duplicates.len()
     );
     println!();
 
@@ -80,10 +78,8 @@ pub fn print_report(
 
     // Section 2: Near-Duplicates
     println!(
-        "{} 2. NEAR-DUPLICATE CLUSTERS ({} clusters) {}",
-        "---",
-        near_dupes.len(),
-        "---"
+        "--- 2. NEAR-DUPLICATE CLUSTERS ({} clusters) ---",
+        near_dupes.len()
     );
     println!();
 
@@ -106,10 +102,7 @@ pub fn print_report(
     }
 
     // Section 3: N-grams
-    println!(
-        "{} 3. MOST REPEATED PHRASES {}",
-        "---", "---"
-    );
+    println!("--- 3. MOST REPEATED PHRASES ---");
     println!();
 
     for (i, ng) in ngrams.iter().take(top_n).enumerate() {
@@ -126,10 +119,8 @@ pub fn print_report(
 
     // Section 4: Repeated Sequences
     println!(
-        "{} 4. REPEATED SEGMENT BLOCKS ({} unique blocks) {}",
-        "---",
-        sequences.len(),
-        "---"
+        "--- 4. REPEATED SEGMENT BLOCKS ({} unique blocks) ---",
+        sequences.len()
     );
     println!();
 
@@ -162,7 +153,7 @@ pub fn print_report(
     }
 
     // Section 5: Summary
-    println!("{} 5. SUMMARY {}", "---", "---");
+    println!("--- 5. SUMMARY ---");
     println!();
     println!(
         "  Exact duplicate groups:   {}",

@@ -38,24 +38,24 @@ pub fn parse_jsonl(path: &Path) -> Vec<Transcription> {
             Err(_) => continue,
         };
 
-        if entry.entry_type == "transcription" {
-            if let (Some(start), Some(start_fmt), Some(text), Some(end), Some(end_fmt)) = (
+        if entry.entry_type == "transcription"
+            && let (Some(start), Some(start_fmt), Some(text), Some(end), Some(end_fmt)) = (
                 entry.start,
                 entry.start_formatted,
                 entry.text,
                 entry.end,
                 entry.end_formatted,
-            ) {
-                transcriptions.push(Transcription {
-                    index: idx,
-                    start,
-                    start_formatted: start_fmt,
-                    text,
-                    end,
-                    end_formatted: end_fmt,
-                });
-                idx += 1;
-            }
+            )
+        {
+            transcriptions.push(Transcription {
+                index: idx,
+                start,
+                start_formatted: start_fmt,
+                text,
+                end,
+                end_formatted: end_fmt,
+            });
+            idx += 1;
         }
     }
 

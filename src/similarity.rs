@@ -28,8 +28,8 @@ pub fn levenshtein_bounded(a: &[u8], b: &[u8], max_dist: usize) -> Option<usize>
     let mut prev = vec![0usize; n + 1];
     let mut curr = vec![0usize; n + 1];
 
-    for j in 0..=n {
-        prev[j] = j;
+    for (j, val) in prev.iter_mut().enumerate().take(n + 1) {
+        *val = j;
     }
 
     for i in 1..=m {
@@ -59,8 +59,8 @@ pub fn levenshtein_bounded(a: &[u8], b: &[u8], max_dist: usize) -> Option<usize>
         }
 
         // Fill remaining out-of-band cells
-        for j in (j_end + 1)..=n {
-            curr[j] = max_dist + 1;
+        for val in &mut curr[(j_end + 1)..=n] {
+            *val = max_dist + 1;
         }
 
         if row_min > max_dist {

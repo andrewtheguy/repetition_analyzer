@@ -96,10 +96,10 @@ pub fn extract_ngrams(
 
                 for window in words.windows(sub_n) {
                     let sub_ngram = window.join(" ");
-                    if let Some(&sub_count) = shorter_counts.get(sub_ngram.as_str()) {
-                        if (sub_count as f64) <= (result.count as f64) * 1.2 {
-                            suppressed.insert(sub_ngram);
-                        }
+                    if let Some(&sub_count) = shorter_counts.get(sub_ngram.as_str())
+                        && (sub_count as f64) <= (result.count as f64) * 1.2
+                    {
+                        suppressed.insert(sub_ngram);
                     }
                 }
             }

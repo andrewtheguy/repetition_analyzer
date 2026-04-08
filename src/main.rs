@@ -13,6 +13,23 @@ use std::time::Instant;
 use clap::{Parser, Subcommand, ValueEnum};
 use parse::parse_filter;
 
+struct AnalyzeConfig {
+    file: String,
+    min_ngram: usize,
+    max_ngram: usize,
+    similarity_threshold: f64,
+    top_n: usize,
+    min_count: usize,
+    min_seq_len: usize,
+    max_seq_len: usize,
+    min_seq_occurrences: usize,
+    seq_similarity_threshold: f64,
+    text_key: String,
+    id_key: Option<String>,
+    filter: Option<String>,
+    format: Format,
+}
+
 #[derive(Clone, Debug, ValueEnum)]
 enum Format {
     Human,
@@ -143,8 +160,8 @@ fn main() {
             filter,
             format,
         } => {
-            run_analyze(
-                &file,
+            run_analyze(&AnalyzeConfig {
+                file,
                 min_ngram,
                 max_ngram,
                 similarity_threshold,
@@ -154,11 +171,11 @@ fn main() {
                 max_seq_len,
                 min_seq_occurrences,
                 seq_similarity_threshold,
-                &text_key,
-                &id_key,
-                &filter,
-                &format,
-            );
+                text_key,
+                id_key,
+                filter,
+                format,
+            });
         }
         Command::Enrich {
             source,
@@ -170,48 +187,32 @@ fn main() {
             text_key,
             filter,
         } => {
-            enrich::run_enrich(
-                &source,
-                &result,
-                &start_key,
-                &end_key,
-                &start_formatted_key,
-                &end_formatted_key,
-                &text_key,
-                &filter,
-            );
+            enrich::run_enrich(&enrich::EnrichConfig {
+                source,
+                result,
+                start_key,
+                end_key,
+                start_formatted_key,
+                end_formatted_key,
+                text_key,
+                filter,
+            });
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_analyze(
-    file: &str,
-    min_ngram: usize,
-    max_ngram: usize,
-    similarity_threshold: f64,
-    top_n: usize,
-    min_count: usize,
-    min_seq_len: usize,
-    max_seq_len: usize,
-    min_seq_occurrences: usize,
-    seq_similarity_threshold: f64,
-    text_key: &str,
-    id_key: &Option<String>,
-    filter: &Option<String>,
-    format: &Format,
-) {
+fn run_analyze(config: &AnalyzeConfig) {
     let start = Instant::now();
 
     // Parse
     let t = Instant::now();
-    eprintln!("Parsing {}...", file);
+    eprintln!("Parsing {}...", config.file);
     let parse_opts = parse::ParseOptions {
-        text_key: text_key.to_string(),
-        id_key: id_key.clone(),
-        filter: parse_filter(filter),
+        text_key: config.text_key.clone(),
+        id_key: config.id_key.clone(),
+        filter: parse_filter(&config.filter),
     };
-    let entries = parse::parse_jsonl(Path::new(file), &parse_opts);
+    let entries = parse::parse_jsonl(Path::new(&config.file), &parse_opts);
     eprintln!(
         "Loaded {} entries ({:.2}s)",
         entries.len(),
@@ -229,7 +230,7 @@ fn run_analyze(
 
     // Near-duplicates
     let t = Instant::now();
-    let near_dupes = exact::find_near_duplicates(&entries, similarity_threshold);
+    let near_dupes = exact::find_near_duplicates(&entries, config.similarity_threshold);
     eprintln!(
         "Found {} near-duplicate clusters ({:.2}s)",
         near_dupes.len(),
@@ -238,7 +239,8 @@ fn run_analyze(
 
     // N-grams
     let t = Instant::now();
-    let ngram_results = ngrams::extract_ngrams(&entries, min_ngram, max_ngram, min_count);
+    let ngram_results =
+        ngrams::extract_ngrams(&entries, config.min_ngram, config.max_ngram, config.min_count);
     eprintln!(
         "Found {} significant n-grams ({:.2}s)",
         ngram_results.len(),
@@ -247,8 +249,12 @@ fn run_analyze(
 
     // Repeated sequences
     let t = Instant::now();
-    let repeated_seqs =
-        sequences::find_repeated_sequences(&entries, min_seq_len, max_seq_len, min_seq_occurrences);
+    let repeated_seqs = sequences::find_repeated_sequences(
+        &entries,
+        config.min_seq_len,
+        config.max_seq_len,
+        config.min_seq_occurrences,
+    );
     eprintln!(
         "Found {} repeated sequence patterns ({:.2}s)",
         repeated_seqs.len(),
@@ -259,10 +265,10 @@ fn run_analyze(
     let t = Instant::now();
     let near_seqs = near_sequences::find_near_duplicate_sequences(
         &entries,
-        min_seq_len,
-        max_seq_len,
-        seq_similarity_threshold,
-        min_seq_occurrences,
+        config.min_seq_len,
+        config.max_seq_len,
+        config.seq_similarity_threshold,
+        config.min_seq_occurrences,
         &repeated_seqs,
     );
     eprintln!(
@@ -275,25 +281,17 @@ fn run_analyze(
     eprintln!("Analysis complete in {:.2}s", elapsed.as_secs_f64());
 
     // Print report
-    match format {
-        Format::Json => report::print_json_report(
-            file,
-            &entries,
-            &duplicates,
-            &near_dupes,
-            &ngram_results,
-            &repeated_seqs,
-            &near_seqs,
-        ),
-        Format::Human => report::print_report(
-            file,
-            &entries,
-            &duplicates,
-            &near_dupes,
-            &ngram_results,
-            &repeated_seqs,
-            &near_seqs,
-            top_n,
-        ),
+    let data = report::ReportData {
+        file_path: &config.file,
+        entries: &entries,
+        duplicates: &duplicates,
+        near_dupes: &near_dupes,
+        ngrams: &ngram_results,
+        sequences: &repeated_seqs,
+        near_seqs: &near_seqs,
+    };
+    match config.format {
+        Format::Json => report::print_json_report(&data),
+        Format::Human => report::print_report(&data, config.top_n),
     }
 }

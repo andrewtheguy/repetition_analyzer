@@ -6,15 +6,25 @@ use crate::ngrams::NgramResult;
 use crate::parse::Transcription;
 use crate::sequences::RepeatedSequence;
 
-#[derive(Serialize)]
-pub struct Report<'a> {
+pub struct ReportData<'a> {
     pub file_path: &'a str,
-    pub total_entries: usize,
-    pub exact_duplicates: &'a [DuplicateGroup],
-    pub near_duplicates: &'a [NearDuplicateCluster],
+    pub entries: &'a [Transcription],
+    pub duplicates: &'a [DuplicateGroup],
+    pub near_dupes: &'a [NearDuplicateCluster],
     pub ngrams: &'a [NgramResult],
-    pub repeated_sequences: &'a [RepeatedSequence],
-    pub near_duplicate_sequences: &'a [NearDuplicateSequence],
+    pub sequences: &'a [RepeatedSequence],
+    pub near_seqs: &'a [NearDuplicateSequence],
+}
+
+#[derive(Serialize)]
+struct JsonReport<'a> {
+    file_path: &'a str,
+    total_entries: usize,
+    exact_duplicates: &'a [DuplicateGroup],
+    near_duplicates: &'a [NearDuplicateCluster],
+    ngrams: &'a [NgramResult],
+    repeated_sequences: &'a [RepeatedSequence],
+    near_duplicate_sequences: &'a [NearDuplicateSequence],
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
@@ -26,42 +36,32 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn print_report(
-    file_path: &str,
-    entries: &[Transcription],
-    duplicates: &[DuplicateGroup],
-    near_dupes: &[NearDuplicateCluster],
-    ngrams: &[NgramResult],
-    sequences: &[RepeatedSequence],
-    near_seqs: &[NearDuplicateSequence],
-    top_n: usize,
-) {
+pub fn print_report(data: &ReportData, top_n: usize) {
     // Header
     println!();
     println!("{}", "=".repeat(70));
     println!("  REPETITION ANALYSIS REPORT");
-    println!("  File: {}", file_path);
-    println!("  Entries: {}", entries.len());
+    println!("  File: {}", data.file_path);
+    println!("  Entries: {}", data.entries.len());
     println!("{}", "=".repeat(70));
 
     // Section 1: Exact Duplicates
     println!();
     println!(
         "--- 1. EXACT DUPLICATES ({} texts appear 2+ times) ---",
-        duplicates.len()
+        data.duplicates.len()
     );
     println!();
 
-    for (i, group) in duplicates.iter().take(top_n).enumerate() {
+    for (i, group) in data.duplicates.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>3}x | \"{}\"",
             i + 1,
             group.count,
             truncate(&group.canonical_text, 120)
         );
-        let first_id = &entries[group.indices[0]].id;
-        let last_id = &entries[*group.indices.last().unwrap()].id;
+        let first_id = &data.entries[group.indices[0]].id;
+        let last_id = &data.entries[*group.indices.last().unwrap()].id;
         println!("        First: id={} | Last: id={}", first_id, last_id);
         println!();
     }
@@ -69,11 +69,11 @@ pub fn print_report(
     // Section 2: Near-Duplicates
     println!(
         "--- 2. NEAR-DUPLICATE CLUSTERS ({} clusters) ---",
-        near_dupes.len()
+        data.near_dupes.len()
     );
     println!();
 
-    for (i, cluster) in near_dupes.iter().take(top_n).enumerate() {
+    for (i, cluster) in data.near_dupes.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. Cluster ({} variants): \"{}\"",
             i + 1,
@@ -98,7 +98,7 @@ pub fn print_report(
     println!("--- 3. MOST REPEATED PHRASES ---");
     println!();
 
-    for (i, ng) in ngrams.iter().take(top_n).enumerate() {
+    for (i, ng) in data.ngrams.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>4}x ({}-gram, {} entries) | \"{}\"",
             i + 1,
@@ -113,11 +113,11 @@ pub fn print_report(
     // Section 4: Repeated Sequences
     println!(
         "--- 4. REPEATED SEGMENT BLOCKS ({} unique blocks) ---",
-        sequences.len()
+        data.sequences.len()
     );
     println!();
 
-    for (i, seq) in sequences.iter().take(top_n).enumerate() {
+    for (i, seq) in data.sequences.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>3}x | {}-entry block",
             i + 1,
@@ -147,11 +147,11 @@ pub fn print_report(
     // Section 5: Near-Duplicate Sequences
     println!(
         "--- 5. NEAR-DUPLICATE SEGMENT BLOCKS ({} unique patterns) ---",
-        near_seqs.len()
+        data.near_seqs.len()
     );
     println!();
 
-    for (i, seq) in near_seqs.iter().take(top_n).enumerate() {
+    for (i, seq) in data.near_seqs.iter().take(top_n).enumerate() {
         println!(
             "  {:>3}. {:>3}x | {}-entry block | avg similarity: {:.1}%",
             i + 1,
@@ -182,11 +182,11 @@ pub fn print_report(
     // Section 6: Summary
     println!("--- 6. SUMMARY ---");
     println!();
-    println!("  Exact duplicate groups:       {}", duplicates.len());
-    println!("  Near-duplicate clusters:      {}", near_dupes.len());
-    println!("  Near-duplicate seq. patterns: {}", near_seqs.len());
+    println!("  Exact duplicate groups:       {}", data.duplicates.len());
+    println!("  Near-duplicate clusters:      {}", data.near_dupes.len());
+    println!("  Near-duplicate seq. patterns: {}", data.near_seqs.len());
 
-    if let Some(top_ng) = ngrams.first() {
+    if let Some(top_ng) = data.ngrams.first() {
         println!(
             "  Most repeated phrase:         \"{}\" ({}x)",
             truncate(&top_ng.ngram, 60),
@@ -194,7 +194,7 @@ pub fn print_report(
         );
     }
 
-    if let Some(top_seq) = sequences.first() {
+    if let Some(top_seq) = data.sequences.first() {
         println!(
             "  Most repeated block:          {}-entry block ({}x)",
             top_seq.length,
@@ -206,23 +206,15 @@ pub fn print_report(
     println!("{}", "=".repeat(70));
 }
 
-pub fn print_json_report(
-    file_path: &str,
-    entries: &[Transcription],
-    duplicates: &[DuplicateGroup],
-    near_dupes: &[NearDuplicateCluster],
-    ngrams: &[NgramResult],
-    sequences: &[RepeatedSequence],
-    near_seqs: &[NearDuplicateSequence],
-) {
-    let report = Report {
-        file_path,
-        total_entries: entries.len(),
-        exact_duplicates: duplicates,
-        near_duplicates: near_dupes,
-        ngrams,
-        repeated_sequences: sequences,
-        near_duplicate_sequences: near_seqs,
+pub fn print_json_report(data: &ReportData) {
+    let report = JsonReport {
+        file_path: data.file_path,
+        total_entries: data.entries.len(),
+        exact_duplicates: data.duplicates,
+        near_duplicates: data.near_dupes,
+        ngrams: data.ngrams,
+        repeated_sequences: data.sequences,
+        near_duplicate_sequences: data.near_seqs,
     };
 
     println!(

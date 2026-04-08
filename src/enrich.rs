@@ -5,6 +5,17 @@ use std::path::Path;
 
 use crate::parse::{filter_matches, parse_filter, ParsedFilter};
 
+pub struct EnrichConfig {
+    pub source: String,
+    pub result: String,
+    pub start_key: String,
+    pub end_key: String,
+    pub start_formatted_key: String,
+    pub end_formatted_key: String,
+    pub text_key: String,
+    pub filter: Option<String>,
+}
+
 struct TimestampInfo {
     start: Option<f64>,
     end: Option<f64>,
@@ -12,17 +23,8 @@ struct TimestampInfo {
     end_formatted: Option<String>,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_timestamp_lookup(
-    source_path: &Path,
-    text_key: &str,
-    filter: &Option<ParsedFilter>,
-    start_key: &str,
-    end_key: &str,
-    start_formatted_key: &str,
-    end_formatted_key: &str,
-) -> Vec<TimestampInfo> {
-    let file = File::open(source_path).expect("Failed to open source JSONL file");
+fn build_timestamp_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> Vec<TimestampInfo> {
+    let file = File::open(Path::new(&config.source)).expect("Failed to open source JSONL file");
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
 
@@ -42,19 +44,19 @@ fn build_timestamp_lookup(
         }
 
         // Must have text key to be a valid entry
-        if obj.get(text_key).and_then(|v| v.as_str()).is_none() {
+        if obj.get(&config.text_key).and_then(|v| v.as_str()).is_none() {
             continue;
         }
 
         entries.push(TimestampInfo {
-            start: obj.get(start_key).and_then(|v| v.as_f64()),
-            end: obj.get(end_key).and_then(|v| v.as_f64()),
+            start: obj.get(&config.start_key).and_then(|v| v.as_f64()),
+            end: obj.get(&config.end_key).and_then(|v| v.as_f64()),
             start_formatted: obj
-                .get(start_formatted_key)
+                .get(&config.start_formatted_key)
                 .and_then(|v| v.as_str())
                 .map(String::from),
             end_formatted: obj
-                .get(end_formatted_key)
+                .get(&config.end_formatted_key)
                 .and_then(|v| v.as_str())
                 .map(String::from),
         });
@@ -130,35 +132,17 @@ fn enrich_value(value: &mut Value, lookup: &[TimestampInfo]) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn run_enrich(
-    source: &str,
-    result: &str,
-    start_key: &str,
-    end_key: &str,
-    start_formatted_key: &str,
-    end_formatted_key: &str,
-    text_key: &str,
-    filter: &Option<String>,
-) {
-    let parsed_filter = parse_filter(filter);
+pub fn run_enrich(config: &EnrichConfig) {
+    let parsed_filter = parse_filter(&config.filter);
 
-    let lookup = build_timestamp_lookup(
-        Path::new(source),
-        text_key,
-        &parsed_filter,
-        start_key,
-        end_key,
-        start_formatted_key,
-        end_formatted_key,
-    );
+    let lookup = build_timestamp_lookup(config, &parsed_filter);
 
     eprintln!(
         "Loaded {} entries from source for timestamp lookup",
         lookup.len()
     );
 
-    let result_file = File::open(result).expect("Failed to open result JSON file");
+    let result_file = File::open(&config.result).expect("Failed to open result JSON file");
     let mut result_json: Value =
         serde_json::from_reader(BufReader::new(result_file)).expect("Failed to parse result JSON");
 

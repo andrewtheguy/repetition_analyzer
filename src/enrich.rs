@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use crate::error::AppError;
 use crate::parse::{filter_matches, parse_filter, ParsedFilter};
 
 pub struct EnrichConfig {
@@ -25,14 +26,20 @@ struct EntryInfo {
     id: Option<String>,
 }
 
-fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> Result<Vec<EntryInfo>, String> {
-    let file = File::open(Path::new(&config.source))
-        .map_err(|e| format!("Failed to open source JSONL file: {e}"))?;
+fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> crate::error::Result<Vec<EntryInfo>> {
+    let source_path = &config.source;
+    let file = File::open(Path::new(source_path)).map_err(|e| AppError::FileOpen {
+        path: source_path.clone(),
+        source: e,
+    })?;
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
 
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read line: {e}"))?;
+    for (line_num, line) in reader.lines().enumerate() {
+        let line = line.map_err(|e| AppError::LineRead {
+            line: line_num + 1,
+            source: e,
+        })?;
         let obj: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
@@ -44,7 +51,12 @@ fn build_entry_lookup(config: &EnrichConfig, filter: &Option<ParsedFilter>) -> R
                 Some(v) => match filter_matches(v, f) {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => return Err(e),
+                    Err(message) => {
+                        return Err(AppError::FilterMismatch {
+                            line: line_num + 1,
+                            message,
+                        })
+                    }
                 },
                 None => continue,
             }
@@ -140,7 +152,7 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
     }
 }
 
-pub fn run_enrich(config: &EnrichConfig) -> Result<(), String> {
+pub fn run_enrich(config: &EnrichConfig) -> crate::error::Result<()> {
     let parsed_filter = parse_filter(&config.filter);
 
     let lookup = build_entry_lookup(config, &parsed_filter)?;
@@ -150,10 +162,12 @@ pub fn run_enrich(config: &EnrichConfig) -> Result<(), String> {
         lookup.len()
     );
 
-    let result_file = File::open(&config.result)
-        .map_err(|e| format!("Failed to open result JSON file: {e}"))?;
-    let mut result_json: Value = serde_json::from_reader(BufReader::new(result_file))
-        .map_err(|e| format!("Failed to parse result JSON: {e}"))?;
+    let result_file = File::open(&config.result).map_err(|e| AppError::FileOpen {
+        path: config.result.clone(),
+        source: e,
+    })?;
+    let mut result_json: Value =
+        serde_json::from_reader(BufReader::new(result_file))?;
 
     // Inject total_duration_secs at top level
     if let Value::Object(ref mut map) = result_json
@@ -165,10 +179,7 @@ pub fn run_enrich(config: &EnrichConfig) -> Result<(), String> {
 
     enrich_value(&mut result_json, &lookup);
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&result_json)
-            .map_err(|e| format!("Failed to serialize enriched result: {e}"))?
-    );
+    let output = serde_json::to_string_pretty(&result_json)?;
+    println!("{output}");
     Ok(())
 }

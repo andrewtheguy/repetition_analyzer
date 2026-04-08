@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use uuid::Uuid;
 
+use crate::error::AppError;
 use crate::parse::{filter_matches, parse_filter, ParsedFilter};
 
 pub struct PreprocessConfig {
@@ -46,27 +47,39 @@ fn process_entry(
     Ok(true)
 }
 
-pub fn run_preprocess(config: &PreprocessConfig) -> Result<(), String> {
+pub fn run_preprocess(config: &PreprocessConfig) -> crate::error::Result<()> {
     let parsed_filter = parse_filter(&config.filter);
-    let file =
-        File::open(Path::new(&config.file)).map_err(|e| format!("Failed to open JSONL file: {e}"))?;
+    let file = File::open(Path::new(&config.file)).map_err(|e| AppError::FileOpen {
+        path: config.file.clone(),
+        source: e,
+    })?;
     let reader = BufReader::new(file);
     let mut stdout = std::io::BufWriter::new(std::io::stdout().lock());
     let mut count = 0usize;
 
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read line: {e}"))?;
+    for (line_num, line) in reader.lines().enumerate() {
+        let line = line.map_err(|e| AppError::LineRead {
+            line: line_num + 1,
+            source: e,
+        })?;
         let mut obj: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        if !process_entry(&mut obj, &config.text_key, &parsed_filter, &config.new_id_key)? {
-            continue;
+        match process_entry(&mut obj, &config.text_key, &parsed_filter, &config.new_id_key) {
+            Ok(true) => {}
+            Ok(false) => continue,
+            Err(message) => {
+                return Err(AppError::FilterMismatch {
+                    line: line_num + 1,
+                    message,
+                })
+            }
         }
 
-        serde_json::to_writer(&mut stdout, &obj).map_err(|e| format!("Failed to serialize entry: {e}"))?;
-        writeln!(stdout).map_err(|e| format!("Failed to write newline: {e}"))?;
+        serde_json::to_writer(&mut stdout, &obj)?;
+        writeln!(stdout)?;
         count += 1;
     }
 

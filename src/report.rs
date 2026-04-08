@@ -65,7 +65,7 @@ pub fn print_report(data: &ReportData, top_n: usize) {
         );
         let first_id = &data.entries[group.indices[0]].id;
         let last_id = &data.entries[*group.indices.last().unwrap()].id;
-        println!("        First: id={} | Last: id={}", first_id, last_id);
+        println!("        First: id={first_id} | Last: id={last_id}");
         println!();
     }
 

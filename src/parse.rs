@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use crate::error::AppError;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilterType {
     Str,
@@ -120,8 +122,11 @@ pub struct ParseOptions {
     pub filter: Option<ParsedFilter>,
 }
 
-pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Result<Vec<Transcription>, String> {
-    let file = File::open(path).map_err(|e| format!("Failed to open JSONL file: {e}"))?;
+pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> crate::error::Result<Vec<Transcription>> {
+    let file = File::open(path).map_err(|e| AppError::FileOpen {
+        path: path.display().to_string(),
+        source: e,
+    })?;
     let reader = BufReader::new(file);
     let mut transcriptions = Vec::new();
     let mut seen_ids: Option<std::collections::HashSet<String>> =
@@ -129,7 +134,10 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Result<Vec<Transcription
     let mut idx = 0;
 
     for (line_num, line) in reader.lines().enumerate() {
-        let line = line.map_err(|e| format!("Failed to read line {}: {e}", line_num + 1))?;
+        let line = line.map_err(|e| AppError::LineRead {
+            line: line_num + 1,
+            source: e,
+        })?;
         let obj: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => continue,
@@ -141,7 +149,12 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Result<Vec<Transcription
                 Some(v) => match filter_matches(v, f) {
                     Ok(true) => {}
                     Ok(false) => continue,
-                    Err(e) => return Err(format!("line {}: {e}", line_num + 1)),
+                    Err(message) => {
+                        return Err(AppError::FilterMismatch {
+                            line: line_num + 1,
+                            message,
+                        })
+                    }
                 },
                 None => continue,
             }
@@ -167,7 +180,10 @@ pub fn parse_jsonl(path: &Path, opts: &ParseOptions) -> Result<Vec<Transcription
         if let Some(seen) = &mut seen_ids
             && !seen.insert(id.clone())
         {
-            return Err(format!("line {}: duplicate id '{id}'", line_num + 1));
+            return Err(AppError::DuplicateId {
+                line: line_num + 1,
+                id,
+            });
         }
 
         transcriptions.push(Transcription {
@@ -426,7 +442,10 @@ mod tests {
         };
         let result = parse_jsonl(f.path(), &opts);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("duplicate id"));
+        assert!(matches!(
+            result.unwrap_err(),
+            AppError::DuplicateId { .. }
+        ));
     }
 
     #[test]

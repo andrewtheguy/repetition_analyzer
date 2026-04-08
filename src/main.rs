@@ -1,4 +1,5 @@
 mod enrich;
+mod error;
 mod exact;
 mod near_sequences;
 mod ngrams;
@@ -238,7 +239,7 @@ fn main() {
     }
 }
 
-fn run_analyze(config: &AnalyzeConfig) -> Result<(), String> {
+fn run_analyze(config: &AnalyzeConfig) -> error::Result<()> {
     let start = Instant::now();
 
     // Parse

@@ -35,8 +35,9 @@ def main():
         items.append((truncate(ng["ngram"]), ng["count"], "Repeated n-gram"))
 
     for seq in data.get("repeated_sequences", []):
-        text = seq.get("representative_text", f"Sequence (len {seq.get('length', '?')})")
-        items.append((truncate(text), seq["count"], "Repeated sequence"))
+        text = " / ".join(seq.get("entry_texts", [f"Sequence (len {seq.get('length', '?')})"]))
+        count = len(seq.get("occurrences", []))
+        items.append((truncate(text), count, "Repeated sequence"))
 
     if not items:
         print("No repetitions found.")

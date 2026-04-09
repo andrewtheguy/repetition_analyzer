@@ -1,3 +1,5 @@
 /target
 .claude/
 tmp/
+plot_repetitions/.venv/
+plot_repetitions/uv.lock

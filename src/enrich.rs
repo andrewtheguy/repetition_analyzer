@@ -76,6 +76,9 @@ fn inject_entry_info(ts: &mut Map<String, Value>, info: &EntryInfo) {
     if let Some(id) = &info.id {
         ts.insert("id".to_string(), Value::from(id.clone()));
     }
+    if let Some(text) = &info.text {
+        ts.insert("text".to_string(), Value::from(text.clone()));
+    }
 }
 
 fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
@@ -88,26 +91,29 @@ fn enrich_value(value: &mut Value, lookup: &[EntryInfo]) {
                 inject_entry_info(map, info);
             }
 
-            // If this object has an "indices" array (exact_duplicates),
-            // each element is [index, id] — add timestamps
-            if let Some(Value::Array(indices)) = map.get("indices") {
-                let ts_array: Vec<Value> = indices
-                    .iter()
-                    .filter_map(|v| {
-                        let arr = v.as_array()?;
-                        let idx = arr.first()?.as_u64()?;
-                        Some(idx)
-                    })
-                    .map(|idx| {
-                        let mut ts = Map::new();
-                        ts.insert("index".to_string(), Value::from(idx));
-                        if let Some(info) = lookup.get(idx as usize) {
-                            inject_entry_info(&mut ts, info);
-                        }
-                        Value::Object(ts)
-                    })
-                    .collect();
-                map.insert("index_timestamps".to_string(), Value::Array(ts_array));
+            // For arrays whose elements start with [index, ...], inject timestamps.
+            // Covers: "indices" (exact_duplicates), "members" (near_duplicates),
+            // "entry_indices" (ngrams).
+            for key in ["indices", "members", "entry_indices"] {
+                if let Some(Value::Array(arr)) = map.get(key) {
+                    let ts_array: Vec<Value> = arr
+                        .iter()
+                        .filter_map(|v| {
+                            let a = v.as_array()?;
+                            let idx = a.first()?.as_u64()?;
+                            Some(idx)
+                        })
+                        .map(|idx| {
+                            let mut ts = Map::new();
+                            ts.insert("index".to_string(), Value::from(idx));
+                            if let Some(info) = lookup.get(idx as usize) {
+                                inject_entry_info(&mut ts, info);
+                            }
+                            Value::Object(ts)
+                        })
+                        .collect();
+                    map.insert("index_timestamps".to_string(), Value::Array(ts_array));
+                }
             }
 
             // Recurse into all values

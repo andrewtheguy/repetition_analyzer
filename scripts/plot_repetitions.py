@@ -1,78 +1,154 @@
 #!/usr/bin/env python3
-"""Plot repetition counts from enriched JSON as a horizontal bar chart."""
+"""Plot repetition counts from enriched JSON as an HTML bar chart."""
 
+import html
 import json
 import sys
 
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
+TRUNCATE_LEN = 40
 
-matplotlib.rcParams["font.family"] = ["Arial Unicode MS", "sans-serif"]
-
-TRUNCATE_LEN = 30
+COLORS = {
+    "Exact duplicate": "#e74c3c",
+    "Near duplicate": "#f39c12",
+    "Repeated n-gram": "#3498db",
+    "Repeated sequence": "#2ecc71",
+}
 
 
 def truncate(text, max_len=TRUNCATE_LEN):
     return text[:max_len] + "…" if len(text) > max_len else text
 
 
-def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else "tmp/kmrb_monday_enriched.json"
-    with open(path) as f:
-        data = json.load(f)
-
-    items = []  # (label, count, category)
+def collect_items(data):
+    items = []  # (full_text, count, category, details)
 
     for dup in data.get("exact_duplicates", []):
-        items.append((truncate(dup["canonical_text"]), dup["count"], "Exact duplicate"))
+        details = [
+            {"text": dup["canonical_text"], "start": ts.get("start_formatted", ""), "end": ts.get("end_formatted", "")}
+            for ts in dup.get("index_timestamps", [])
+        ]
+        items.append((dup["canonical_text"], dup["count"], "Exact duplicate", details))
 
     for cluster in data.get("near_duplicates", []):
-        text = cluster["representative_text"]
-        items.append((truncate(text), len(cluster["members"]), "Near duplicate"))
+        details = [
+            {"text": ts.get("text", ""), "start": ts.get("start_formatted", ""), "end": ts.get("end_formatted", "")}
+            for ts in cluster.get("index_timestamps", [])
+        ]
+        items.append((cluster["representative_text"], len(cluster.get("members", [])), "Near duplicate", details))
 
     for ng in data.get("ngrams", []):
-        items.append((truncate(ng["ngram"]), ng["count"], "Repeated n-gram"))
+        details = [
+            {"text": ng["ngram"], "start": ts.get("start_formatted", ""), "end": ts.get("end_formatted", "")}
+            for ts in ng.get("index_timestamps", [])
+        ]
+        items.append((ng["ngram"], ng["count"], "Repeated n-gram", details))
 
     for seq in data.get("repeated_sequences", []):
         text = " / ".join(seq.get("entry_texts", [f"Sequence (len {seq.get('length', '?')})"]))
-        count = len(seq.get("occurrences", []))
-        items.append((truncate(text), count, "Repeated sequence"))
+        details = [
+            {"text": text, "start": occ.get("start_formatted", ""), "end": occ.get("end_formatted", "")}
+            for occ in seq.get("occurrences", [])
+        ]
+        items.append((text, len(seq.get("occurrences", [])), "Repeated sequence", details))
 
+    items.sort(key=lambda x: x[1], reverse=True)
+    return items
+
+
+def render_detail_rows(details):
+    rows = ""
+    for d in details:
+        text = html.escape(d["text"])
+        time = ""
+        if d["start"] and d["end"]:
+            time = f'{html.escape(d["start"])} – {html.escape(d["end"])}'
+        rows += f'<div class="detail-row"><span class="detail-time">{time}</span><span class="detail-text">{text}</span></div>\n'
+    return rows
+
+
+def render_html(items):
+    max_count = max(c for _, c, _, _ in items)
+    categories_present = sorted(set(cat for _, _, cat, _ in items))
+
+    legend = "".join(
+        f'<span style="display:inline-flex;align-items:center;margin-right:1.5em;">'
+        f'<span style="width:14px;height:14px;background:{COLORS[c]};border-radius:3px;display:inline-block;margin-right:6px;"></span>'
+        f'{html.escape(c)}</span>'
+        for c in categories_present
+    )
+
+    rows = ""
+    for i, (text, count, category, details) in enumerate(items):
+        pct = count / max_count * 100
+        color = COLORS[category]
+        label = html.escape(truncate(text))
+        detail_html = render_detail_rows(details)
+        rows += f"""<tr class="main-row" onclick="toggle({i})">
+  <td class="label">{label}</td>
+  <td class="count">{count}</td>
+  <td class="bar-cell"><div class="bar" style="width:{pct:.1f}%;background:{color};"></div></td>
+</tr>
+<tr class="detail-panel" id="detail-{i}">
+  <td colspan="3"><div class="detail-content">{detail_html}</div></td>
+</tr>
+"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Repetitions</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, sans-serif; margin: 2em; background: #fafafa; }}
+  h1 {{ font-size: 1.4em; margin-bottom: 0.3em; }}
+  .legend {{ margin-bottom: 1.5em; font-size: 0.9em; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  td {{ padding: 4px 8px; vertical-align: middle; }}
+  .label {{ white-space: nowrap; text-align: right; width: 1%; font-size: 0.9em; }}
+  .count {{ text-align: right; width: 1%; font-weight: bold; font-size: 0.9em; padding-right: 12px; }}
+  .bar-cell {{ width: 98%; }}
+  .bar {{ height: 22px; border-radius: 3px; min-width: 2px; }}
+  .main-row {{ cursor: pointer; }}
+  .main-row:hover {{ background: #eee; }}
+  .detail-panel {{ display: none; }}
+  .detail-panel.open {{ display: table-row; }}
+  .detail-content {{ padding: 8px 12px; background: #f0f0f0; border-radius: 4px; margin: 4px 0; }}
+  .detail-row {{ padding: 3px 0; display: flex; gap: 12px; font-size: 0.85em; }}
+  .detail-time {{ color: #666; white-space: nowrap; min-width: 180px; }}
+  .detail-text {{ flex: 1; }}
+</style>
+</head>
+<body>
+<h1>Repetitions</h1>
+<div class="legend">{legend}</div>
+<table>
+{rows}
+</table>
+<script>
+function toggle(i) {{
+  document.getElementById('detail-' + i).classList.toggle('open');
+}}
+</script>
+</body>
+</html>"""
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <enriched.json>", file=sys.stderr)
+        sys.exit(1)
+    path = sys.argv[1]
+    with open(path) as f:
+        data = json.load(f)
+
+    items = collect_items(data)
     if not items:
         print("No repetitions found.")
         return
 
-    items.sort(key=lambda x: x[1], reverse=True)
-
-    labels = [it[0] for it in items]
-    counts = [it[1] for it in items]
-    categories = [it[2] for it in items]
-
-    colors = {
-        "Exact duplicate": "#e74c3c",
-        "Near duplicate": "#f39c12",
-        "Repeated n-gram": "#3498db",
-        "Repeated sequence": "#2ecc71",
-    }
-    bar_colors = [colors[c] for c in categories]
-
-    fig, ax = plt.subplots(figsize=(14, max(6, len(items) * 0.8)))
-    y_pos = range(len(items))
-    ax.barh(y_pos, counts, color=bar_colors)
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels)
-    ax.invert_yaxis()
-    ax.set_xlabel("Repetition count")
-    ax.set_title("Repetitions")
-    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-
-    legend_items = [Patch(facecolor=colors[c], label=c) for c in colors if c in set(categories)]
-    ax.legend(handles=legend_items, loc="lower right")
-
-    plt.tight_layout()
-    out = path.replace("_enriched.json", "_repetitions.svg")
-    plt.savefig(out)
+    out = path.replace("_enriched.json", "_repetitions.html")
+    with open(out, "w") as f:
+        f.write(render_html(items))
     print(f"Saved to {out}")
 
 

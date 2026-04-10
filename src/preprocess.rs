@@ -68,10 +68,10 @@ fn process_entry(
         }
     }
 
-    // Skip entries missing the text key
+    // Skip entries missing or empty text
     let text = match obj.get(&config.text_key).and_then(|v| v.as_str()) {
-        Some(s) => s.to_string(),
-        None => return Ok(None),
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => return Ok(None),
     };
 
     // ID: use existing key or generate UUIDv7.

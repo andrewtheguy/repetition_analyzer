@@ -113,6 +113,48 @@ pub fn extract_ngrams(
         }
     }
 
+    // Same-length overlap dedup: when two n-grams of the same size overlap
+    // by n-1 words (one is a one-word shift of the other) and have similar
+    // counts, suppress the lower-count one (or the lexicographically later
+    // one if counts are equal).
+    for n in min_n..=max_n {
+        let Some(results) = results_by_n.get(&n) else {
+            continue;
+        };
+        // Build a lookup from first (n-1) words to the full n-gram
+        let mut by_prefix: HashMap<Vec<&str>, Vec<usize>> = HashMap::new();
+        for (i, (words, _)) in results.iter().enumerate() {
+            let prefix: Vec<&str> = words[..words.len() - 1].iter().map(|s| s.as_str()).collect();
+            by_prefix.entry(prefix).or_default().push(i);
+        }
+        // For each n-gram, check if its suffix matches another n-gram's prefix
+        for (i, (words, _)) in results.iter().enumerate() {
+            if suppressed.contains(&results[i].1.ngram) {
+                continue;
+            }
+            let suffix: Vec<&str> = words[1..].iter().map(|s| s.as_str()).collect();
+            if let Some(matches) = by_prefix.get(&suffix) {
+                for &j in matches {
+                    if i == j || suppressed.contains(&results[j].1.ngram) {
+                        continue;
+                    }
+                    let ci = results[i].1.count;
+                    let cj = results[j].1.count;
+                    let (lo, hi) = if ci <= cj { (ci, cj) } else { (cj, ci) };
+                    if (lo as f64) >= (hi as f64) * 0.8 {
+                        // Similar counts — suppress the lower-count one,
+                        // or the later one lexicographically if equal
+                        if ci < cj || (ci == cj && results[i].1.ngram > results[j].1.ngram) {
+                            suppressed.insert(results[i].1.ngram.clone());
+                        } else {
+                            suppressed.insert(results[j].1.ngram.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let mut kept: Vec<NgramResult> = Vec::new();
     for n in min_n..=max_n {
         if let Some(results) = results_by_n.remove(&n) {
@@ -183,6 +225,81 @@ mod tests {
         let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
         assert!(ngrams.contains(&"a b c d"));
         assert!(!ngrams.contains(&"a b c"));
+    }
+
+    #[test]
+    fn shifted_same_length_ngrams_consolidated() {
+        // "a b c d" and "b c d e" overlap by 3 words — one should be suppressed
+        let entries = vec![
+            entry(0, "a b c d e"),
+            entry(1, "a b c d e"),
+            entry(2, "a b c d e"),
+        ];
+        let results = extract_ngrams(&entries, 4, 4, 3);
+        // Should keep only one of "a b c d" or "b c d e", not both
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn shifted_ngrams_different_counts_not_consolidated() {
+        // "a b c" appears in 3 entries, "b c d" appears in 5 — counts differ
+        // too much (3 < 5*0.8=4), so both should be kept
+        let entries = vec![
+            entry(0, "a b c d"),
+            entry(1, "a b c d"),
+            entry(2, "a b c d"),
+            entry(3, "x b c d"),
+            entry(4, "y b c d"),
+        ];
+        let results = extract_ngrams(&entries, 3, 3, 3);
+        let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
+        assert!(ngrams.contains(&"a b c"));
+        assert!(ngrams.contains(&"b c d"));
+    }
+
+    #[test]
+    fn shifted_chain_consolidates_adjacent_pairs() {
+        // "a b c d", "b c d e", "c d e f" form a chain — adjacent pairs
+        // get consolidated but non-adjacent survivors may remain
+        let entries = vec![
+            entry(0, "a b c d e f"),
+            entry(1, "a b c d e f"),
+            entry(2, "a b c d e f"),
+        ];
+        let results = extract_ngrams(&entries, 4, 4, 3);
+        // At least one pair should be consolidated (3 → ≤2)
+        assert!(results.len() <= 2);
+    }
+
+    #[test]
+    fn shifted_ngrams_non_overlapping_both_kept() {
+        // "a b c" and "d e f" don't overlap — both kept
+        let entries = vec![
+            entry(0, "a b c x d e f"),
+            entry(1, "a b c y d e f"),
+            entry(2, "a b c z d e f"),
+        ];
+        let results = extract_ngrams(&entries, 3, 3, 3);
+        let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
+        assert!(ngrams.contains(&"a b c"));
+        assert!(ngrams.contains(&"d e f"));
+    }
+
+    #[test]
+    fn shifted_consolidation_keeps_higher_count() {
+        // "a b c" appears 5 times, "b c d" appears 4 times (4/5=0.8, within threshold)
+        // Should suppress the lower-count one
+        let entries = vec![
+            entry(0, "a b c d"),
+            entry(1, "a b c d"),
+            entry(2, "a b c d"),
+            entry(3, "a b c d"),
+            entry(4, "a b c x"),
+        ];
+        let results = extract_ngrams(&entries, 3, 3, 4);
+        let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
+        assert!(ngrams.contains(&"a b c"));
+        assert!(!ngrams.contains(&"b c d"));
     }
 
     #[test]

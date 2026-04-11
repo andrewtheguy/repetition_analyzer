@@ -8,8 +8,8 @@ Python CLI with performance-critical algorithms (Levenshtein distance, n-gram ex
 
 ```bash
 # Install (requires Rust toolchain + Python 3.10+)
-uv venv && uv pip install maturin pytest
-maturin develop --manifest-path native-helper/Cargo.toml --features python
+uv sync --group dev
+maturin develop --manifest-path native-helper/Cargo.toml --features python --skip-install
 
 # Preprocess: filter, normalize field names, and assign unique IDs
 repetition-analyzer preprocess data.jsonl --filter type=transcript > filtered.csv
@@ -94,12 +94,13 @@ Generates an interactive HTML bar chart from enriched JSON.
 Requires a Rust toolchain and Python 3.10+.
 
 ```bash
-# Build native extension
-maturin develop --manifest-path native-helper/Cargo.toml --features python
+# Setup
+uv sync --group dev
+maturin develop --manifest-path native-helper/Cargo.toml --features python --skip-install
 
 # Run tests
 cd native-helper && cargo test && cargo clippy  # Rust algorithm tests
-pytest                                           # Python tests
+uv run pytest                                    # Python tests
 ```
 
 See [docs/input-format.md](docs/input-format.md), [docs/analyses.md](docs/analyses.md), and [docs/output-format.md](docs/output-format.md) for details.

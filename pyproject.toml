@@ -11,6 +11,9 @@ dependencies = []
 [project.scripts]
 repetition-analyzer = "repetition_analyzer.cli:main"
 
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff", "maturin>=1.9.4"]
+
 [tool.maturin]
 manifest-path = "native-helper/Cargo.toml"
 features = ["python"]

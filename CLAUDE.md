@@ -2,5 +2,5 @@
 - Delete unused code outright — no `_unused` renames, no re-exports, no `// removed` comments.
 - Rust code lives in `native-helper/`. Run `cd native-helper && cargo clippy && cargo test` for Rust changes.
 - Python code lives in `repetition_analyzer/`. Run `pytest` for Python tests.
-- Build native extension: `maturin develop --manifest-path native-helper/Cargo.toml --features python`
+- Build native extension: `maturin develop --manifest-path native-helper/Cargo.toml --features python --skip-install`
 - Use ./tmp for temporary artifacts.

@@ -141,7 +141,12 @@ def run_plot(path: str) -> None:
         print("No repetitions found.")
         return
 
-    out = path.replace("_enriched.json", "_repetitions.html")
+    from pathlib import Path as P
+    p = P(path)
+    if p.stem.endswith("_enriched"):
+        out = str(p.with_stem(p.stem.removesuffix("_enriched") + "_repetitions").with_suffix(".html"))
+    else:
+        out = str(p.with_stem(p.stem + "_repetitions").with_suffix(".html"))
     with open(out, "w") as f:
         f.write(render_html(items))
     print(f"Saved to {out}")

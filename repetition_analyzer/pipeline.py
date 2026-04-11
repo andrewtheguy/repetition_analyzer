@@ -147,4 +147,23 @@ def run_pipeline(config: dict[str, Any]) -> None:
     run_plot(enriched_path)
     print(f"  {outdir}/", file=sys.stderr)
 
+    # -- extract-unique --
+    print("==> extract-unique", file=sys.stderr)
+    from .enrich import run_extract_unique
+
+    segments_path = os.path.join(outdir, "segments.json")
+    with open(segments_path, "w") as f:
+        sys.stdout = f
+        try:
+            run_extract_unique({"source": csv_path, "result": result_path})
+        finally:
+            sys.stdout = old_stdout
+    print(f"  {segments_path}", file=sys.stderr)
+
+    # -- extract-segments --
+    print("==> extract-segments", file=sys.stderr)
+    from .extract import run_extract_segments
+
+    run_extract_segments({"segments": segments_path, "outdir": outdir})
+
     print(f"Done. Output in {outdir}/", file=sys.stderr)

@@ -94,15 +94,16 @@ def truncate_hallucinated_repeats(text: str, min_repeats: int = 10, max_pattern_
     if n < 100:
         return text
     for pat_len in range(2, min(max_pattern_len + 1, n // min_repeats + 1)):
-        for start in range(n - pat_len * min_repeats + 1):
-            pattern = text[start : start + pat_len]
-            pos = start + pat_len
-            count = 1
-            while pos + pat_len <= n and text[pos : pos + pat_len] == pattern:
-                count += 1
-                pos += pat_len
-            if count >= min_repeats:
-                return text[: start + pat_len] + "(indistinguishable speech)"
+        run = 0
+        threshold = pat_len * (min_repeats - 1)
+        for i in range(pat_len, n):
+            if text[i] == text[i - pat_len]:
+                run += 1
+                if run >= threshold:
+                    start = i - run - pat_len + 1
+                    return text[: start + pat_len] + "(indistinguishable speech)"
+            else:
+                run = 0
     return text
 
 

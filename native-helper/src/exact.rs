@@ -12,19 +12,30 @@ pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<ExactDuplicateGro
 
     let mut result: Vec<ExactDuplicateGroup> = groups
         .into_values()
-        .filter(|indices| indices.len() >= 2)
-        .map(|indices| {
-            let canonical_text = entries[indices[0]].text.clone();
-            let count = indices.len();
-            let index_pairs = indices
+        .filter_map(|indices| {
+            // Collapse consecutive indices into single occurrences.
+            // Adjacent entries with the same text are often STT hallucinations,
+            // not meaningful repetitions.
+            let mut deduped: Vec<usize> = Vec::new();
+            for &i in &indices {
+                if deduped.last().is_none_or(|&prev| entries[i].index != entries[prev].index + 1) {
+                    deduped.push(i);
+                }
+            }
+            if deduped.len() < 2 {
+                return None;
+            }
+            let canonical_text = entries[deduped[0]].text.clone();
+            let count = deduped.len();
+            let index_pairs = deduped
                 .iter()
                 .map(|&i| (entries[i].index, entries[i].id.clone()))
                 .collect();
-            ExactDuplicateGroup {
+            Some(ExactDuplicateGroup {
                 canonical_text,
                 count,
                 indices: index_pairs,
-            }
+            })
         })
         .collect();
 
@@ -51,6 +62,10 @@ pub fn find_near_duplicates(
 
     for (i, norm) in normed.iter().enumerate() {
         if exact_indices.contains(&entries[i].index) {
+            continue;
+        }
+        // Skip consecutive duplicates (same normalized text as previous entry)
+        if i > 0 && normed[i] == normed[i - 1] {
             continue;
         }
         let prefix: String = norm
@@ -142,11 +157,11 @@ mod tests {
     fn exact_duplicates_group_by_normalized_text_and_sort_by_count() {
         let entries = vec![
             entry(10, "alpha", "Hello, World!"),
-            entry(11, "beta", "HELLO WORLD"),
-            entry(12, "gamma", "hello world??"),
-            entry(20, "delta", "A unique entry"),
-            entry(30, "epsilon", "Second Group"),
-            entry(31, "zeta", "second-group"),
+            entry(20, "beta", "HELLO WORLD"),
+            entry(30, "gamma", "hello world??"),
+            entry(40, "delta", "A unique entry"),
+            entry(50, "epsilon", "Second Group"),
+            entry(60, "zeta", "second-group"),
         ];
 
         assert_eq!(normalize(&entries[0].text), normalize(&entries[1].text));
@@ -185,8 +200,8 @@ mod tests {
     fn exact_duplicates_exclude_singletons() {
         let entries = vec![
             entry(100, "one", "Only once"),
-            entry(101, "two", "Still unique"),
-            entry(102, "three", "Another unique line"),
+            entry(200, "two", "Still unique"),
+            entry(300, "three", "Another unique line"),
         ];
 
         assert_ne!(normalize(&entries[0].text), normalize(&entries[1].text));
@@ -194,6 +209,35 @@ mod tests {
 
         let groups = find_exact_duplicates(&entries);
         assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn exact_duplicates_collapse_consecutive() {
+        // Consecutive entries with the same text should collapse to one occurrence
+        let entries = vec![
+            entry(0, "a", "Same text here"),
+            entry(1, "b", "Same text here"),
+            entry(2, "c", "Different text"),
+        ];
+        let groups = find_exact_duplicates(&entries);
+        assert!(groups.is_empty(), "consecutive-only duplicates should not form a group");
+    }
+
+    #[test]
+    fn exact_duplicates_consecutive_plus_distant() {
+        // Consecutive pair at 0-1, plus a distant occurrence at 10 → 2 logical occurrences
+        let entries = vec![
+            entry(0, "a", "Repeated line"),
+            entry(1, "b", "Repeated line"),
+            entry(5, "c", "Something else"),
+            entry(10, "d", "Repeated line"),
+        ];
+        let groups = find_exact_duplicates(&entries);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 2);
+        // First occurrence is index 0 (representative of 0-1 run), second is index 10
+        assert_eq!(groups[0].indices[0].0, 0);
+        assert_eq!(groups[0].indices[1].0, 10);
     }
 
     #[test]
@@ -235,16 +279,30 @@ mod tests {
     fn near_duplicates_excludes_exact_entries() {
         let entries = vec![
             entry(0, "0", "The quick brown fox jumps over the lazy dog"),
-            entry(1, "1", "The quick brown fox jumps over the lazy dog"),
-            entry(2, "2", "The quick brown fox leaps over the lazy dog"),
+            entry(10, "1", "The quick brown fox jumps over the lazy dog"),
+            entry(20, "2", "The quick brown fox leaps over the lazy dog"),
         ];
         // Without exclusion, all three would cluster together
         let exact = find_exact_duplicates(&entries);
         assert_eq!(exact.len(), 1);
         assert_eq!(exact[0].count, 2);
 
-        // Near-duplicates should exclude the exact pair (indices 0,1)
+        // Near-duplicates should exclude the exact pair (indices 0,10)
         let clusters = find_near_duplicates(&entries, 0.80, &exact);
         assert!(clusters.is_empty());
+    }
+
+    #[test]
+    fn near_duplicates_skips_consecutive_duplicates() {
+        // Consecutive exact duplicates should not form a near-duplicate cluster
+        let entries = vec![
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox jumps over the lazy dog"),
+            entry(10, "2", "Something completely different and unrelated here"),
+        ];
+        let exact = find_exact_duplicates(&entries);
+        assert!(exact.is_empty(), "consecutive-only pair should not form exact group");
+        let clusters = find_near_duplicates(&entries, 0.80, &exact);
+        assert!(clusters.is_empty(), "consecutive duplicate should not form near-duplicate cluster");
     }
 }

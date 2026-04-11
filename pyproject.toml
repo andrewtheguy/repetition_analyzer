@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.9.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "repetition-analyzer"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+repetition-analyzer = "repetition_analyzer.cli:main"
+
+[tool.maturin]
+manifest-path = "native-helper/Cargo.toml"
+features = ["python"]
+python-packages = ["repetition_analyzer"]

@@ -1,8 +1,0 @@
-[project]
-name = "plot-repetitions"
-version = "0.1.0"
-requires-python = ">=3.10"
-dependencies = []
-
-[project.scripts]
-plot-repetitions = "plot_repetitions:main"

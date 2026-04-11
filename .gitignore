@@ -1,5 +1,12 @@
 /target
+native-helper/target
 .claude/
 tmp/
-scripts/.venv/
-scripts/uv.lock
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+*.so
+*.dylib
+*.pyd
+.pytest_cache/

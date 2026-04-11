@@ -1,53 +1,7 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
-
-use crate::parse::Transcription;
 use crate::similarity::{normalize, similarity_above_threshold};
-
-#[derive(Debug, Serialize)]
-pub struct DuplicateGroup {
-    pub canonical_text: String,
-    pub count: usize,
-    pub indices: Vec<(usize, String)>, // (index, id)
-}
-
-pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<DuplicateGroup> {
-    let mut map: HashMap<String, Vec<usize>> = HashMap::new();
-
-    for entry in entries {
-        let norm = normalize(&entry.text);
-        map.entry(norm).or_default().push(entry.index);
-    }
-
-    let mut groups: Vec<DuplicateGroup> = map
-        .into_iter()
-        .filter(|(_, indices)| indices.len() >= 2)
-        .map(|(_, indices)| {
-            let canonical = entries[indices[0]].text.clone();
-            let count = indices.len();
-            let indices = indices
-                .iter()
-                .map(|&i| (i, entries[i].id.clone()))
-                .collect();
-            DuplicateGroup {
-                canonical_text: canonical,
-                count,
-                indices,
-            }
-        })
-        .collect();
-
-    groups.sort_by(|a, b| b.count.cmp(&a.count));
-    groups
-}
-
-#[derive(Debug, Serialize)]
-pub struct NearDuplicateCluster {
-    pub representative_text: String,
-    pub members: Vec<(usize, String, String)>, // (index, id, text)
-    pub total_count: usize,
-}
+use crate::types::{NearDuplicateCluster, Transcription};
 
 pub fn find_near_duplicates(
     entries: &[Transcription],
@@ -134,7 +88,6 @@ pub fn find_near_duplicates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Transcription;
 
     fn entry(index: usize, text: &str) -> Transcription {
         Transcription {
@@ -142,51 +95,6 @@ mod tests {
             id: index.to_string(),
             text: text.to_string(),
         }
-    }
-
-    #[test]
-    fn exact_duplicates_found() {
-        let entries = vec![
-            entry(0, "Hello world"),
-            entry(1, "Something else"),
-            entry(2, "Hello world"),
-            entry(3, "Hello world"),
-        ];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].count, 3);
-        let indices: Vec<usize> = groups[0].indices.iter().map(|(i, _)| *i).collect();
-        assert_eq!(indices, vec![0, 2, 3]);
-        assert_eq!(groups[0].indices[0].1, "0");
-        assert_eq!(groups[0].indices[2].1, "3");
-    }
-
-    #[test]
-    fn exact_duplicates_case_insensitive() {
-        let entries = vec![entry(0, "Hello World"), entry(1, "hello world")];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].count, 2);
-    }
-
-    #[test]
-    fn no_duplicates() {
-        let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
-        let groups = find_exact_duplicates(&entries);
-        assert!(groups.is_empty());
-    }
-
-    #[test]
-    fn exact_duplicates_with_ids() {
-        let entries = vec![
-            Transcription { index: 0, id: "aaa".to_string(), text: "Hello world".to_string() },
-            Transcription { index: 1, id: "bbb".to_string(), text: "other".to_string() },
-            Transcription { index: 2, id: "ccc".to_string(), text: "Hello world".to_string() },
-        ];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
-        let ids: Vec<&str> = groups[0].indices.iter().map(|(_, id)| id.as_str()).collect();
-        assert_eq!(ids, vec!["aaa", "ccc"]);
     }
 
     #[test]

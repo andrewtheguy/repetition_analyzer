@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
 """Plot repetition counts from enriched JSON as an HTML bar chart."""
 
 import html
 import json
-import sys
 
 TRUNCATE_LEN = 40
 
@@ -16,11 +14,11 @@ COLORS = {
 
 
 def truncate(text, max_len=TRUNCATE_LEN):
-    return text[:max_len] + "…" if len(text) > max_len else text
+    return text[:max_len] + "\u2026" if len(text) > max_len else text
 
 
 def collect_items(data):
-    items = []  # (full_text, count, category, details)
+    items = []
 
     for dup in data.get("exact_duplicates", []):
         details = [
@@ -61,7 +59,7 @@ def render_detail_rows(details):
         text = html.escape(d["text"])
         time = ""
         if d["start"] and d["end"]:
-            time = f'{html.escape(d["start"])} – {html.escape(d["end"])}'
+            time = f'{html.escape(d["start"])} \u2013 {html.escape(d["end"])}'
         rows += f'<div class="detail-row"><span class="detail-time">{time}</span><span class="detail-text">{text}</span></div>\n'
     return rows
 
@@ -133,11 +131,7 @@ function toggle(i) {{
 </html>"""
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <enriched.json>", file=sys.stderr)
-        sys.exit(1)
-    path = sys.argv[1]
+def run_plot(path: str) -> None:
     with open(path) as f:
         data = json.load(f)
 
@@ -150,7 +144,3 @@ def main():
     with open(out, "w") as f:
         f.write(render_html(items))
     print(f"Saved to {out}")
-
-
-if __name__ == "__main__":
-    main()

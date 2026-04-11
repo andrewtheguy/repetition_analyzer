@@ -1,25 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use serde::Serialize;
-
-use crate::parse::Transcription;
-use crate::sequences::RepeatedSequence;
 use crate::similarity::{normalize, similarity_above_threshold};
-
-#[derive(Debug, Serialize)]
-pub struct NearSequenceOccurrence {
-    pub start_index: usize,
-    pub start_id: String,
-    pub entry_texts: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NearDuplicateSequence {
-    pub length: usize,
-    pub occurrences: Vec<NearSequenceOccurrence>,
-    pub representative_texts: Vec<String>,
-    pub avg_similarity: f64,
-}
+use crate::types::{
+    NearDuplicateSequence, NearSequenceOccurrence, RepeatedSequence, Transcription,
+};
 
 pub fn find_near_duplicate_sequences(
     entries: &[Transcription],
@@ -192,7 +176,7 @@ pub fn find_near_duplicate_sequences(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Transcription;
+    use crate::types::SequenceOccurrence;
 
     fn entry(index: usize, text: &str) -> Transcription {
         Transcription {
@@ -204,7 +188,6 @@ mod tests {
 
     #[test]
     fn finds_near_duplicate_pair() {
-        // Two 2-entry blocks with slight text differences
         let entries = vec![
             entry(0, "The quick brown fox jumps over the lazy dog"),
             entry(1, "And then nothing else happened after that event"),
@@ -212,7 +195,7 @@ mod tests {
             entry(3, "The quick brown fox leaps over the lazy dog"),
             entry(4, "And then nothing else happened after that time"),
         ];
-        let exact_seqs = vec![]; // no exact matches
+        let exact_seqs = vec![];
         let seqs = find_near_duplicate_sequences(&entries, 2, 2, 0.80, 2, &exact_seqs);
         assert_eq!(seqs.len(), 1);
         assert_eq!(seqs[0].length, 2);
@@ -221,7 +204,6 @@ mod tests {
 
     #[test]
     fn skips_exact_duplicates() {
-        // If exact sequences already cover these positions, near-dup should skip
         let entries = vec![
             entry(0, "identical line one"),
             entry(1, "identical line two"),
@@ -232,8 +214,14 @@ mod tests {
         let exact_seqs = vec![RepeatedSequence {
             length: 2,
             occurrences: vec![
-                crate::sequences::SequenceOccurrence { start_index: 0, start_id: "0".to_string() },
-                crate::sequences::SequenceOccurrence { start_index: 3, start_id: "3".to_string() },
+                SequenceOccurrence {
+                    start_index: 0,
+                    start_id: "0".to_string(),
+                },
+                SequenceOccurrence {
+                    start_index: 3,
+                    start_id: "3".to_string(),
+                },
             ],
             entry_texts: vec![
                 "identical line one".to_string(),

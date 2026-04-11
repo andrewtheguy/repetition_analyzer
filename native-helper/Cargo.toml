@@ -1,0 +1,13 @@
+[package]
+name = "native-helper"
+version = "0.0.1"
+edition = "2021"
+
+[lib]
+name = "native_helper"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+pythonize = "0.28"
+serde = { version = "1", features = ["derive"] }

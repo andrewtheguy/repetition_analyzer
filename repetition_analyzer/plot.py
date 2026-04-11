@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 """Plot repetition counts from enriched JSON as an HTML bar chart."""
 
 import html
 import json
-import sys
+from pathlib import Path
+from typing import Any
 
 TRUNCATE_LEN = 40
 
@@ -15,12 +15,12 @@ COLORS = {
 }
 
 
-def truncate(text, max_len=TRUNCATE_LEN):
-    return text[:max_len] + "…" if len(text) > max_len else text
+def truncate(text: str, max_len: int = TRUNCATE_LEN) -> str:
+    return text[:max_len] + "\u2026" if len(text) > max_len else text
 
 
-def collect_items(data):
-    items = []  # (full_text, count, category, details)
+def collect_items(data: dict[str, Any]) -> list[tuple[str, int, str, list[dict[str, str]]]]:
+    items = []
 
     for dup in data.get("exact_duplicates", []):
         details = [
@@ -55,18 +55,18 @@ def collect_items(data):
     return items
 
 
-def render_detail_rows(details):
+def render_detail_rows(details: list[dict[str, str]]) -> str:
     rows = ""
     for d in details:
         text = html.escape(d["text"])
         time = ""
         if d["start"] and d["end"]:
-            time = f'{html.escape(d["start"])} – {html.escape(d["end"])}'
+            time = f'{html.escape(d["start"])} \u2013 {html.escape(d["end"])}'
         rows += f'<div class="detail-row"><span class="detail-time">{time}</span><span class="detail-text">{text}</span></div>\n'
     return rows
 
 
-def render_html(items):
+def render_html(items: list[tuple[str, int, str, list[dict[str, str]]]]) -> str:
     max_count = max(c for _, c, _, _ in items)
     categories_present = sorted(set(cat for _, _, cat, _ in items))
 
@@ -133,11 +133,7 @@ function toggle(i) {{
 </html>"""
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <enriched.json>", file=sys.stderr)
-        sys.exit(1)
-    path = sys.argv[1]
+def run_plot(path: str) -> None:
     with open(path) as f:
         data = json.load(f)
 
@@ -146,11 +142,11 @@ def main():
         print("No repetitions found.")
         return
 
-    out = path.replace("_enriched.json", "_repetitions.html")
+    path_obj = Path(path)
+    if path_obj.stem.endswith("_enriched"):
+        out = str(path_obj.with_stem(path_obj.stem.removesuffix("_enriched") + "_repetitions").with_suffix(".html"))
+    else:
+        out = str(path_obj.with_stem(path_obj.stem + "_repetitions").with_suffix(".html"))
     with open(out, "w") as f:
         f.write(render_html(items))
     print(f"Saved to {out}")
-
-
-if __name__ == "__main__":
-    main()

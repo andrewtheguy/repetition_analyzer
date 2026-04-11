@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native-helper
+
+      - name: Run Rust clippy
+        working-directory: native-helper
+        run: cargo clippy -- -D warnings
+
+      - name: Run Rust tests
+        working-directory: native-helper
+        run: cargo test
+
+      - name: Build native extension
+        run: uv run maturin develop --skip-install
+
+      - name: Lint Python
+        run: |
+          uv run ruff check
+          uv run basedpyright
+
+      - name: Run Python tests
+        run: uv run pytest

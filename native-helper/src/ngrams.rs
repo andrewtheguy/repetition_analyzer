@@ -1,17 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use serde::Serialize;
-
-use crate::parse::Transcription;
 use crate::similarity::normalize;
-
-#[derive(Debug, Serialize)]
-pub struct NgramResult {
-    pub ngram: String,
-    pub n: usize,
-    pub count: usize,
-    pub entry_indices: Vec<(usize, String)>, // (index, id)
-}
+use crate::types::{NgramResult, Transcription};
 
 pub fn extract_ngrams(
     entries: &[Transcription],
@@ -69,10 +59,6 @@ pub fn extract_ngrams(
     }
 
     // "Longest phrase wins" deduplication
-    // For each longer n-gram, extract all shorter sub-n-grams and mark them
-    // as suppressed if they have similar count.
-    //
-    // Build count lookup per shorter n: ngram_string -> count
     let mut counts_at: HashMap<usize, HashMap<&str, usize>> = HashMap::new();
     for (&n, results) in &results_by_n {
         let mut m = HashMap::new();
@@ -103,31 +89,26 @@ pub fn extract_ngrams(
 
                 for window in words.windows(sub_n) {
                     let sub_ngram = window.join(" ");
-                    if let Some(&sub_count) = shorter_counts.get(sub_ngram.as_str())
-                        && (sub_count as f64) <= (result.count as f64) * 1.2
-                    {
-                        suppressed.insert(sub_ngram);
+                    if let Some(&sub_count) = shorter_counts.get(sub_ngram.as_str()) {
+                        if (sub_count as f64) <= (result.count as f64) * 1.2 {
+                            suppressed.insert(sub_ngram);
+                        }
                     }
                 }
             }
         }
     }
 
-    // Same-length overlap dedup: when two n-grams of the same size overlap
-    // by n-1 words (one is a one-word shift of the other) and have similar
-    // counts, suppress the lower-count one (or the lexicographically later
-    // one if counts are equal).
+    // Same-length overlap dedup
     for n in min_n..=max_n {
         let Some(results) = results_by_n.get(&n) else {
             continue;
         };
-        // Build a lookup from first (n-1) words to the full n-gram
         let mut by_prefix: HashMap<Vec<&str>, Vec<usize>> = HashMap::new();
         for (i, (words, _)) in results.iter().enumerate() {
             let prefix: Vec<&str> = words[..words.len() - 1].iter().map(|s| s.as_str()).collect();
             by_prefix.entry(prefix).or_default().push(i);
         }
-        // For each n-gram, check if its suffix matches another n-gram's prefix
         for (i, (words, _)) in results.iter().enumerate() {
             if suppressed.contains(&results[i].1.ngram) {
                 continue;
@@ -142,8 +123,6 @@ pub fn extract_ngrams(
                     let cj = results[j].1.count;
                     let (lo, hi) = if ci <= cj { (ci, cj) } else { (cj, ci) };
                     if (lo as f64) >= (hi as f64) * 0.8 {
-                        // Similar counts — suppress the lower-count one,
-                        // or the later one lexicographically if equal
                         if ci < cj || (ci == cj && results[i].1.ngram > results[j].1.ngram) {
                             suppressed.insert(results[i].1.ngram.clone());
                         } else {
@@ -173,7 +152,6 @@ pub fn extract_ngrams(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Transcription;
 
     fn entry(index: usize, text: &str) -> Transcription {
         Transcription {
@@ -204,11 +182,9 @@ mod tests {
             entry(1, "alpha beta gamma"),
             entry(2, "delta epsilon zeta"),
         ];
-        // min_count=3 should find nothing (only 2 occurrences)
         let results = extract_ngrams(&entries, 3, 3, 3);
         assert!(results.is_empty());
 
-        // min_count=2 should find it
         let results = extract_ngrams(&entries, 3, 3, 2);
         assert_eq!(results.len(), 1);
     }
@@ -220,7 +196,6 @@ mod tests {
             entry(1, "a b c d"),
             entry(2, "a b c d"),
         ];
-        // "a b c d" (4-gram) should suppress "a b c" (3-gram) since same count
         let results = extract_ngrams(&entries, 3, 4, 3);
         let ngrams: Vec<&str> = results.iter().map(|r| r.ngram.as_str()).collect();
         assert!(ngrams.contains(&"a b c d"));
@@ -229,21 +204,17 @@ mod tests {
 
     #[test]
     fn shifted_same_length_ngrams_consolidated() {
-        // "a b c d" and "b c d e" overlap by 3 words — one should be suppressed
         let entries = vec![
             entry(0, "a b c d e"),
             entry(1, "a b c d e"),
             entry(2, "a b c d e"),
         ];
         let results = extract_ngrams(&entries, 4, 4, 3);
-        // Should keep only one of "a b c d" or "b c d e", not both
         assert_eq!(results.len(), 1);
     }
 
     #[test]
     fn shifted_ngrams_different_counts_not_consolidated() {
-        // "a b c" appears in 3 entries, "b c d" appears in 5 — counts differ
-        // too much (3 < 5*0.8=4), so both should be kept
         let entries = vec![
             entry(0, "a b c d"),
             entry(1, "a b c d"),
@@ -259,21 +230,17 @@ mod tests {
 
     #[test]
     fn shifted_chain_consolidates_adjacent_pairs() {
-        // "a b c d", "b c d e", "c d e f" form a chain — adjacent pairs
-        // get consolidated but non-adjacent survivors may remain
         let entries = vec![
             entry(0, "a b c d e f"),
             entry(1, "a b c d e f"),
             entry(2, "a b c d e f"),
         ];
         let results = extract_ngrams(&entries, 4, 4, 3);
-        // At least one pair should be consolidated (3 → ≤2)
         assert!(results.len() <= 2);
     }
 
     #[test]
     fn shifted_ngrams_non_overlapping_both_kept() {
-        // "a b c" and "d e f" don't overlap — both kept
         let entries = vec![
             entry(0, "a b c x d e f"),
             entry(1, "a b c y d e f"),
@@ -287,8 +254,6 @@ mod tests {
 
     #[test]
     fn shifted_consolidation_keeps_higher_count() {
-        // "a b c" appears 5 times, "b c d" appears 4 times (4/5=0.8, within threshold)
-        // Should suppress the lower-count one
         let entries = vec![
             entry(0, "a b c d"),
             entry(1, "a b c d"),

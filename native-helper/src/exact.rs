@@ -1,52 +1,35 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
-
-use crate::parse::Transcription;
 use crate::similarity::{normalize, similarity_above_threshold};
+use crate::types::{ExactDuplicateGroup, NearDuplicateCluster, Transcription};
 
-#[derive(Debug, Serialize)]
-pub struct DuplicateGroup {
-    pub canonical_text: String,
-    pub count: usize,
-    pub indices: Vec<(usize, String)>, // (index, id)
-}
-
-pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<DuplicateGroup> {
-    let mut map: HashMap<String, Vec<usize>> = HashMap::new();
-
-    for entry in entries {
+pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<ExactDuplicateGroup> {
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, entry) in entries.iter().enumerate() {
         let norm = normalize(&entry.text);
-        map.entry(norm).or_default().push(entry.index);
+        groups.entry(norm).or_default().push(i);
     }
 
-    let mut groups: Vec<DuplicateGroup> = map
-        .into_iter()
-        .filter(|(_, indices)| indices.len() >= 2)
-        .map(|(_, indices)| {
-            let canonical = entries[indices[0]].text.clone();
+    let mut result: Vec<ExactDuplicateGroup> = groups
+        .into_values()
+        .filter(|indices| indices.len() >= 2)
+        .map(|indices| {
+            let canonical_text = entries[indices[0]].text.clone();
             let count = indices.len();
-            let indices = indices
+            let index_pairs = indices
                 .iter()
-                .map(|&i| (i, entries[i].id.clone()))
+                .map(|&i| (entries[i].index, entries[i].id.clone()))
                 .collect();
-            DuplicateGroup {
-                canonical_text: canonical,
+            ExactDuplicateGroup {
+                canonical_text,
                 count,
-                indices,
+                indices: index_pairs,
             }
         })
         .collect();
 
-    groups.sort_by(|a, b| b.count.cmp(&a.count));
-    groups
-}
-
-#[derive(Debug, Serialize)]
-pub struct NearDuplicateCluster {
-    pub representative_text: String,
-    pub members: Vec<(usize, String, String)>, // (index, id, text)
-    pub total_count: usize,
+    result.sort_by(|a, b| b.count.cmp(&a.count));
+    result
 }
 
 pub fn find_near_duplicates(
@@ -134,67 +117,79 @@ pub fn find_near_duplicates(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::Transcription;
 
-    fn entry(index: usize, text: &str) -> Transcription {
+    fn entry(index: usize, id: &str, text: &str) -> Transcription {
         Transcription {
             index,
-            id: index.to_string(),
+            id: id.to_string(),
             text: text.to_string(),
         }
     }
 
     #[test]
-    fn exact_duplicates_found() {
+    fn exact_duplicates_group_by_normalized_text_and_sort_by_count() {
         let entries = vec![
-            entry(0, "Hello world"),
-            entry(1, "Something else"),
-            entry(2, "Hello world"),
-            entry(3, "Hello world"),
+            entry(10, "alpha", "Hello, World!"),
+            entry(11, "beta", "HELLO WORLD"),
+            entry(12, "gamma", "hello world??"),
+            entry(20, "delta", "A unique entry"),
+            entry(30, "epsilon", "Second Group"),
+            entry(31, "zeta", "second-group"),
         ];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
+
+        assert_eq!(normalize(&entries[0].text), normalize(&entries[1].text));
+        assert_eq!(normalize(&entries[1].text), normalize(&entries[2].text));
+        assert_eq!(normalize(&entries[4].text), normalize(&entries[5].text));
+        assert_ne!(normalize(&entries[0].text), normalize(&entries[3].text));
+
+        let groups: Vec<ExactDuplicateGroup> = find_exact_duplicates(&entries);
+
+        assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].count, 3);
-        let indices: Vec<usize> = groups[0].indices.iter().map(|(i, _)| *i).collect();
-        assert_eq!(indices, vec![0, 2, 3]);
-        assert_eq!(groups[0].indices[0].1, "0");
-        assert_eq!(groups[0].indices[2].1, "3");
+        assert_eq!(groups[1].count, 2);
+        assert!(groups[0].count > groups[1].count);
+
+        assert_eq!(groups[0].canonical_text, entries[0].text);
+        assert_eq!(
+            groups[0].indices,
+            vec![
+                (entries[0].index, entries[0].id.clone()),
+                (entries[1].index, entries[1].id.clone()),
+                (entries[2].index, entries[2].id.clone()),
+            ]
+        );
+
+        assert_eq!(groups[1].canonical_text, entries[4].text);
+        assert_eq!(
+            groups[1].indices,
+            vec![
+                (entries[4].index, entries[4].id.clone()),
+                (entries[5].index, entries[5].id.clone()),
+            ]
+        );
     }
 
     #[test]
-    fn exact_duplicates_case_insensitive() {
-        let entries = vec![entry(0, "Hello World"), entry(1, "hello world")];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].count, 2);
-    }
+    fn exact_duplicates_exclude_singletons() {
+        let entries = vec![
+            entry(100, "one", "Only once"),
+            entry(101, "two", "Still unique"),
+            entry(102, "three", "Another unique line"),
+        ];
 
-    #[test]
-    fn no_duplicates() {
-        let entries = vec![entry(0, "alpha"), entry(1, "beta"), entry(2, "gamma")];
+        assert_ne!(normalize(&entries[0].text), normalize(&entries[1].text));
+        assert_ne!(normalize(&entries[1].text), normalize(&entries[2].text));
+
         let groups = find_exact_duplicates(&entries);
         assert!(groups.is_empty());
     }
 
     #[test]
-    fn exact_duplicates_with_ids() {
-        let entries = vec![
-            Transcription { index: 0, id: "aaa".to_string(), text: "Hello world".to_string() },
-            Transcription { index: 1, id: "bbb".to_string(), text: "other".to_string() },
-            Transcription { index: 2, id: "ccc".to_string(), text: "Hello world".to_string() },
-        ];
-        let groups = find_exact_duplicates(&entries);
-        assert_eq!(groups.len(), 1);
-        let ids: Vec<&str> = groups[0].indices.iter().map(|(_, id)| id.as_str()).collect();
-        assert_eq!(ids, vec!["aaa", "ccc"]);
-    }
-
-    #[test]
     fn near_duplicates_clustered() {
         let entries = vec![
-            entry(0, "The quick brown fox jumps over the lazy dog"),
-            entry(1, "The quick brown fox leaps over the lazy dog"),
-            entry(2, "Something completely different and unrelated here"),
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox leaps over the lazy dog"),
+            entry(2, "2", "Something completely different and unrelated here"),
         ];
         let clusters = find_near_duplicates(&entries, 0.80);
         assert_eq!(clusters.len(), 1);
@@ -205,8 +200,8 @@ mod tests {
     #[test]
     fn near_duplicates_low_threshold_no_match() {
         let entries = vec![
-            entry(0, "The quick brown fox jumps over the lazy dog"),
-            entry(1, "The quick brown fox leaps over the lazy dog"),
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox leaps over the lazy dog"),
         ];
         // Very high threshold should not match
         let clusters = find_near_duplicates(&entries, 0.99);
@@ -217,8 +212,8 @@ mod tests {
     fn near_duplicates_different_prefix_no_match() {
         // Different first 3 words means different buckets, so no comparison
         let entries = vec![
-            entry(0, "Alpha beta gamma some long text here for similarity"),
-            entry(1, "Delta epsilon zeta some long text here for similarity"),
+            entry(0, "0", "Alpha beta gamma some long text here for similarity"),
+            entry(1, "1", "Delta epsilon zeta some long text here for similarity"),
         ];
         let clusters = find_near_duplicates(&entries, 0.50);
         assert!(clusters.is_empty());

@@ -147,7 +147,7 @@ def run_extract_segments(config: dict[str, Any]) -> None:
         print("No segments match the criteria.", file=sys.stderr)
         return
 
-    offset_ms = int(config.get("time_offset_hours", 0) * 3600 * 1000)
+    offset_ms = int(config.get("time_offset_seconds", 0) * 1000)
     outdir = Path(config["outdir"])
     outdir.mkdir(parents=True, exist_ok=True)
 

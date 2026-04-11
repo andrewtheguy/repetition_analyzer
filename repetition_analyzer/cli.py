@@ -54,7 +54,7 @@ def main():
     es.add_argument("--min-entries", type=int, default=3, help="Minimum entry count to include")
     es.add_argument("--long-threshold", type=int, default=10, help="Segments >= this go to individual files")
     es.add_argument("--outdir", required=True, help="Output directory")
-    es.add_argument("--time-offset-hours", type=float, default=0, help="Offset added to displayed timestamps (e.g. 7 if 00:00 means 7am)")
+    es.add_argument("--time-offset-seconds", type=float, default=0, help="Offset in seconds added to displayed timestamps (e.g. 25200 for 7am)")
 
     # -- clip --
     cl = subparsers.add_parser("clip", help="Clip CSV to a time range")
@@ -131,7 +131,7 @@ def main():
             "min_entries": args.min_entries,
             "long_threshold": args.long_threshold,
             "outdir": args.outdir,
-            "time_offset_hours": args.time_offset_hours,
+            "time_offset_seconds": args.time_offset_seconds,
         })
     elif args.command == "clip":
         from .clip import run_clip

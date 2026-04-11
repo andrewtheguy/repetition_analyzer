@@ -11,5 +11,4 @@ pub use ngrams::extract_ngrams;
 pub use sequences::find_repeated_sequences;
 pub use similarity::normalize;
 
-#[cfg(feature = "python")]
 mod python;

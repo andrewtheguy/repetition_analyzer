@@ -1,7 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize)]
-#[cfg_attr(feature = "python", derive(pyo3::FromPyObject))]
+#[derive(Debug, Clone, Serialize, pyo3::FromPyObject)]
 pub struct Transcription {
     pub index: usize,
     pub id: String,

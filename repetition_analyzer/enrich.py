@@ -205,7 +205,7 @@ def run_extract_unique(config: dict[str, Any]) -> None:
     repeated = _consolidate_repeated(
         raw_repeated,
         max_unique_gap=config.get("max_unique_gap", 3),
-        min_repeated_island=config.get("min_repeated_island", 2),
+        min_repeated_island=config.get("min_repeated_island", 0),
     )
     print(
         f"{len(raw_repeated)} raw / {len(repeated)} consolidated / {total} total entries",

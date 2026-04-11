@@ -6,4 +6,4 @@
 - Run `uv run pytest` for Python tests.
 - Build native extension: `uv run maturin develop --skip-install`
 - Use ./tmp for temporary artifacts.
-- Only use Rust for codes that need to be performant. If it's not performance-critical, write it in Python.
+- Only use Rust for code that needs to be performant. If it's not performance-critical, write it in Python.

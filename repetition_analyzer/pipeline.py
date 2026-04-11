@@ -164,6 +164,10 @@ def run_pipeline(config: dict[str, Any]) -> None:
     print("==> extract-segments", file=sys.stderr)
     from .extract import run_extract_segments
 
-    run_extract_segments({"segments": segments_path, "outdir": outdir})
+    run_extract_segments({
+        "segments": segments_path,
+        "outdir": outdir,
+        "time_offset_seconds": config.get("time_offset_seconds", 0),
+    })
 
     print(f"Done. Output in {outdir}/", file=sys.stderr)

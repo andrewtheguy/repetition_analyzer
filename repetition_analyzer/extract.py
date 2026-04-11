@@ -46,6 +46,9 @@ def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: st
 
 
 def _write_individual_files(folder: Path, segments: list[dict[str, Any]], offset_ms: int = 0) -> None:
+    import shutil
+    if folder.exists():
+        shutil.rmtree(folder)
     folder.mkdir(parents=True, exist_ok=True)
     for seg in segments:
         with open(folder / _filename(seg, offset_ms), "w") as f:

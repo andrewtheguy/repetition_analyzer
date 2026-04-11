@@ -74,6 +74,7 @@ def main():
     pi = subparsers.add_parser("pipeline", help="Run full pipeline: preprocess → clip → analyze → enrich → plot")
     pi.add_argument("file", help="Path to the JSONL file")
     pi.add_argument("--preset", choices=["kmrb"], default=None, help="Station preset (applies clipping and filter defaults)")
+    pi.add_argument("--time-offset-seconds", type=float, default=0, help="Offset in seconds added to displayed timestamps (e.g. 25200 for 7am)")
     pi.add_argument("extra_analyze_args", nargs="*", help="Extra flags passed to analyze (e.g. --min-count 5)")
 
     # -- plot --
@@ -155,6 +156,7 @@ def main():
             "file": args.file,
             "preset": args.preset,
             "extra_analyze_args": args.extra_analyze_args,
+            "time_offset_seconds": args.time_offset_seconds,
         })
     elif args.command == "plot":
         from .plot import run_plot

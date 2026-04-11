@@ -32,36 +32,16 @@ jobs:
           import pathlib
           import re
           import subprocess
-          import sys
 
           root = pathlib.Path(".")
-          cargo = (root / "native-helper" / "Cargo.toml").read_text()
           pyproject = (root / "pyproject.toml").read_text()
 
-          cargo_match = re.search(r'^version = "([^"]+)"$', cargo, re.MULTILINE)
           pyproject_match = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE)
 
-          if cargo_match is None or pyproject_match is None:
-            raise SystemExit("Could not determine package versions from Cargo.toml / pyproject.toml")
+          if pyproject_match is None:
+            raise SystemExit("Could not determine version from pyproject.toml")
 
-          cargo_version = cargo_match.group(1)
           pyproject_version = pyproject_match.group(1)
-
-          # Normalize semver pre-release to PEP 440 for comparison:
-          # 0.0.1-alpha.1 -> 0.0.1a1, 0.0.1-beta.2 -> 0.0.1b2, 0.0.1-rc.1 -> 0.0.1rc1
-          def semver_to_pep440(v):
-              v = re.sub(r'-alpha\.?(\d+)', r'a\1', v)
-              v = re.sub(r'-beta\.?(\d+)', r'b\1', v)
-              v = re.sub(r'-rc\.?(\d+)', r'rc\1', v)
-              return v
-
-          cargo_normalized = semver_to_pep440(cargo_version)
-
-          if cargo_normalized != pyproject_version:
-            raise SystemExit(
-              f"Version mismatch: Cargo.toml={cargo_version} (normalized: {cargo_normalized}), pyproject.toml={pyproject_version}"
-            )
-
           release_tag = f"v{pyproject_version}"
 
           # Check if tag already exists

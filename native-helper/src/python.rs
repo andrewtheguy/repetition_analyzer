@@ -10,23 +10,15 @@ use crate::{
     find_repeated_sequences as rust_find_repeated_sequences,
 };
 
-#[pyfunction(name = "find_exact_duplicates")]
-fn find_exact_duplicates_py<'py>(
-    py: Python<'py>,
-    entries: Vec<Transcription>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let result = rust_find_exact_duplicates(&entries);
-    Ok(pythonize(py, &result)?)
-}
-
-#[pyfunction(name = "find_near_duplicates")]
-fn find_near_duplicates_py<'py>(
+#[pyfunction(name = "find_all_duplicates")]
+fn find_all_duplicates_py<'py>(
     py: Python<'py>,
     entries: Vec<Transcription>,
     threshold: f64,
-) -> PyResult<Bound<'py, PyAny>> {
-    let result = rust_find_near_duplicates(&entries, threshold);
-    Ok(pythonize(py, &result)?)
+) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    let exact = rust_find_exact_duplicates(&entries);
+    let near = rust_find_near_duplicates(&entries, threshold, &exact);
+    Ok((pythonize(py, &exact)?, pythonize(py, &near)?))
 }
 
 #[pyfunction(name = "extract_ngrams")]
@@ -69,8 +61,7 @@ fn find_all_sequences_py<'py>(
 #[pymodule]
 #[pyo3(name = "_native")]
 fn native_helper(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(find_exact_duplicates_py, module)?)?;
-    module.add_function(wrap_pyfunction!(find_near_duplicates_py, module)?)?;
+    module.add_function(wrap_pyfunction!(find_all_duplicates_py, module)?)?;
     module.add_function(wrap_pyfunction!(extract_ngrams_py, module)?)?;
     module.add_function(wrap_pyfunction!(find_all_sequences_py, module)?)?;
     Ok(())

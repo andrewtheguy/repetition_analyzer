@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "repetition-analyzer"
-version = "0.0.1"
+version = "0.0.2a1"
 requires-python = ">=3.10"
 dependencies = []
 

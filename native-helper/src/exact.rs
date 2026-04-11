@@ -35,12 +35,24 @@ pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<ExactDuplicateGro
 pub fn find_near_duplicates(
     entries: &[Transcription],
     threshold: f64,
+    exact_groups: &[ExactDuplicateGroup],
 ) -> Vec<NearDuplicateCluster> {
+    // Build set of indices already covered by exact duplicate groups
+    let mut exact_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for group in exact_groups {
+        for &(index, _) in &group.indices {
+            exact_indices.insert(index);
+        }
+    }
+
     // Bucket by first 3 words of normalized text
     let mut buckets: HashMap<String, Vec<usize>> = HashMap::new();
     let normed: Vec<String> = entries.iter().map(|e| normalize(&e.text)).collect();
 
     for (i, norm) in normed.iter().enumerate() {
+        if exact_indices.contains(&entries[i].index) {
+            continue;
+        }
         let prefix: String = norm
             .split_whitespace()
             .take(3)
@@ -191,7 +203,7 @@ mod tests {
             entry(1, "1", "The quick brown fox leaps over the lazy dog"),
             entry(2, "2", "Something completely different and unrelated here"),
         ];
-        let clusters = find_near_duplicates(&entries, 0.80);
+        let clusters = find_near_duplicates(&entries, 0.80, &[]);
         assert_eq!(clusters.len(), 1);
         assert_eq!(clusters[0].total_count, 2);
         assert_eq!(clusters[0].members[0].1, "0"); // id
@@ -204,7 +216,7 @@ mod tests {
             entry(1, "1", "The quick brown fox leaps over the lazy dog"),
         ];
         // Very high threshold should not match
-        let clusters = find_near_duplicates(&entries, 0.99);
+        let clusters = find_near_duplicates(&entries, 0.99, &[]);
         assert!(clusters.is_empty());
     }
 
@@ -215,7 +227,24 @@ mod tests {
             entry(0, "0", "Alpha beta gamma some long text here for similarity"),
             entry(1, "1", "Delta epsilon zeta some long text here for similarity"),
         ];
-        let clusters = find_near_duplicates(&entries, 0.50);
+        let clusters = find_near_duplicates(&entries, 0.50, &[]);
+        assert!(clusters.is_empty());
+    }
+
+    #[test]
+    fn near_duplicates_excludes_exact_entries() {
+        let entries = vec![
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox jumps over the lazy dog"),
+            entry(2, "2", "The quick brown fox leaps over the lazy dog"),
+        ];
+        // Without exclusion, all three would cluster together
+        let exact = find_exact_duplicates(&entries);
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0].count, 2);
+
+        // Near-duplicates should exclude the exact pair (indices 0,1)
+        let clusters = find_near_duplicates(&entries, 0.80, &exact);
         assert!(clusters.is_empty());
     }
 }

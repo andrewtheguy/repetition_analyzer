@@ -1,5 +1,7 @@
 """Tests for preprocessing logic."""
 
+import pytest
+
 from repetition_analyzer.preprocess import (
     formatted_to_ms,
     ms_to_formatted,
@@ -76,18 +78,15 @@ def test_converts_formatted_to_ms():
 
 
 def test_errors_on_missing_start_timestamp():
-    import pytest
     with pytest.raises(ValueError, match="missing start timestamp"):
         _apply({"text": "hi", "end_ms": 100})
 
 
 def test_errors_on_missing_end_timestamp():
-    import pytest
     with pytest.raises(ValueError, match="missing end timestamp"):
         _apply({"text": "hi", "start_ms": 0})
 
 
 def test_errors_on_invalid_formatted_timestamp():
-    import pytest
     with pytest.raises(ValueError, match="invalid start timestamp format"):
         _apply({"text": "hi", "start_formatted": "bad", "end_formatted": "00:00:01.000"})

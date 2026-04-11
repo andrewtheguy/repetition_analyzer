@@ -25,6 +25,7 @@ def _clip_at_rebroadcast_marker(
         dropped = len(rows) - cut
         print(f"  Found rebroadcast marker at row {cut} ({rows[cut]['start_formatted']}), dropping {dropped} trailing entries", file=sys.stderr)
         return rows[:cut]
+    print(f"  Warning: rebroadcast marker '{marker}' not found in last {tail_search} entries, using time-based clip only", file=sys.stderr)
     return rows
 
 

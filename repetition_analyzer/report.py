@@ -1,6 +1,7 @@
 """Output formatting for human-readable and JSON reports."""
 
 import json
+from typing import Any
 
 
 def truncate(s: str, max_len: int) -> str:
@@ -9,7 +10,7 @@ def truncate(s: str, max_len: int) -> str:
     return s[:max_len] + "..."
 
 
-def print_report(data: dict, top_n: int) -> None:
+def print_report(data: dict[str, Any], top_n: int) -> None:
     entries = data["entries"]
     duplicates = data["duplicates"]
     near_dupes = data["near_dupes"]
@@ -104,7 +105,7 @@ def print_report(data: dict, top_n: int) -> None:
     print("=" * 70)
 
 
-def print_json_report(data: dict) -> None:
+def print_json_report(data: dict[str, Any]) -> None:
     report = {
         "file_path": data["file_path"],
         "total_entries": len(data["entries"]),

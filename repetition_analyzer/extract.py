@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 from .stations import classify
 
@@ -10,28 +11,28 @@ def _sanitize_ts(ts: str) -> str:
     return ts.split(".")[0]
 
 
-def _filename(seg: dict) -> str:
+def _filename(seg: dict[str, Any]) -> str:
     start = _sanitize_ts(seg.get("start_formatted", "?")).replace(":", "_")
     end = _sanitize_ts(seg.get("end_formatted", "?")).replace(":", "_")
     tag = seg["type"][0]
     return f"{start}--{end}_{tag}_{seg['entry_count']}entries.txt"
 
 
-def _header(seg: dict) -> str:
+def _header(seg: dict[str, Any]) -> str:
     start = _sanitize_ts(seg.get("start_formatted", "?"))
     end = _sanitize_ts(seg.get("end_formatted", "?"))
     return f"{start} - {end} ({seg['entry_count']} entries)"
 
 
-def _duration_secs(seg: dict) -> float:
+def _duration_secs(seg: dict[str, Any]) -> float:
     return (seg.get("end_ms", 0) - seg.get("start_ms", 0)) / 1000.0
 
 
-def _text_blob(seg: dict) -> str:
+def _text_blob(seg: dict[str, Any]) -> str:
     return " ".join(seg.get("texts", [])).lower()
 
 
-def _write_consolidated_md(path: Path, segments: list[dict], title: str) -> None:
+def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: str) -> None:
     with open(path, "w") as f:
         f.write(f"# {title}\n\n")
         for seg in segments:
@@ -41,7 +42,7 @@ def _write_consolidated_md(path: Path, segments: list[dict], title: str) -> None
             f.write("---\n\n")
 
 
-def _write_individual_files(folder: Path, segments: list[dict]) -> None:
+def _write_individual_files(folder: Path, segments: list[dict[str, Any]]) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     for seg in segments:
         with open(folder / _filename(seg), "w") as f:
@@ -49,7 +50,7 @@ def _write_individual_files(folder: Path, segments: list[dict]) -> None:
                 f.write(f"{text}\n")
 
 
-def _output_category(outdir: Path, category: str, segments: list[dict], long_threshold: int) -> None:
+def _output_category(outdir: Path, category: str, segments: list[dict[str, Any]], long_threshold: int) -> None:
     import sys
     short = [s for s in segments if s["entry_count"] < long_threshold]
     long = [s for s in segments if s["entry_count"] >= long_threshold]
@@ -65,7 +66,7 @@ def _output_category(outdir: Path, category: str, segments: list[dict], long_thr
         print(f"  {len(long):>4} long  -> {folder}/", file=sys.stderr)
 
 
-def run_extract_segments(config: dict) -> None:
+def run_extract_segments(config: dict[str, Any]) -> None:
     import sys
 
     with open(config["segments"]) as f:
@@ -91,7 +92,7 @@ def run_extract_segments(config: dict) -> None:
         station = config.get("station")
         if station:
             from collections import defaultdict
-            categorized: dict[str, list[dict]] = defaultdict(list)
+            categorized: dict[str, list[dict[str, Any]]] = defaultdict(list)
             for seg in repeated:
                 cat = classify(station, seg, _duration_secs, _text_blob)
                 categorized[cat].append(seg)

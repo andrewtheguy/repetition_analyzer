@@ -12,22 +12,22 @@ uv sync --group dev
 maturin develop --manifest-path native-helper/Cargo.toml --features python --skip-install
 
 # Preprocess: filter, normalize field names, and assign unique IDs
-repetition-analyzer preprocess data.jsonl --filter type=transcript > filtered.csv
+uv run repetition-analyzer preprocess data.jsonl --filter type=transcript > filtered.csv
 
 # Analyze the preprocessed file
-repetition-analyzer analyze filtered.csv
+uv run repetition-analyzer analyze filtered.csv
 
 # JSON output
-repetition-analyzer analyze filtered.csv --format json > result.json
+uv run repetition-analyzer analyze filtered.csv --format json > result.json
 
 # Enrich result with timestamps from the preprocessed file
-repetition-analyzer enrich --source filtered.csv --result result.json > enriched.json
+uv run repetition-analyzer enrich --source filtered.csv --result result.json > enriched.json
 
 # Extract unique/repeated segments
-repetition-analyzer extract-unique --source filtered.csv --result result.json > segments.json
+uv run repetition-analyzer extract-unique --source filtered.csv --result result.json > segments.json
 
 # HTML visualization
-repetition-analyzer plot enriched.json
+uv run repetition-analyzer plot enriched.json
 ```
 
 ## Subcommands

@@ -12,9 +12,28 @@ dependencies = []
 repetition-analyzer = "repetition_analyzer.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff", "maturin>=1.9.4"]
+dev = ["pytest>=8.0", "ruff", "basedpyright", "maturin>=1.9.4"]
 
 [tool.maturin]
 manifest-path = "native-helper/Cargo.toml"
 features = ["python"]
 python-packages = ["repetition_analyzer"]
+
+[tool.pyright]
+stubPath = "native-helper"
+exclude = [".venv", "build", "dist", ".git", "tests", "native-helper", "tmp"]
+reportUnknownParameterType = true
+reportUninitializedInstanceVariable = true
+reportMissingTypeStubs = false
+reportExplicitAny = false
+reportAny = false
+reportUnannotatedClassAttribute = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportImplicitStringConcatenation = false
+reportMissingImports = true
+reportMissingModuleSource = false
+reportUnusedCallResult = false
+reportImplicitOverride = false

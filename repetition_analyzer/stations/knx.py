@@ -1,7 +1,7 @@
 """KNX 97.1 FM Los Angeles — segment classifier."""
 
 import re
-from typing import Callable
+from typing import Any, Callable
 
 URL_RE = re.compile(r"\b\w+\.(com|org|net|gov|io)\b")
 PHONE_RE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
@@ -58,10 +58,10 @@ def _phrase_count(blob: str, phrases: list[str]) -> int:
     return sum(1 for p in phrases if p in blob)
 
 
-def classify(seg: dict, duration_fn: Callable, text_blob_fn: Callable) -> str:
+def classify(seg: dict[str, Any], duration_fn: Callable[[dict[str, Any]], float], text_blob_fn: Callable[[dict[str, Any]], str]) -> str:
     blob = text_blob_fn(seg)
     dur = duration_fn(seg)
-    count = seg.get("entry_count", 0)
+    count: int = seg.get("entry_count", 0)
 
     # Station bumpers / IDs
     if dur < 25.0 and any(p in blob for p in BUMPER):

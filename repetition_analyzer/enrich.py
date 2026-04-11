@@ -3,13 +3,14 @@
 import csv
 import json
 import sys
+from typing import Any
 
 
 def _non_empty(s: str) -> str | None:
     return s if s else None
 
 
-def build_entry_lookup(source: str) -> list[dict]:
+def build_entry_lookup(source: str) -> list[dict[str, Any]]:
     """Build lookup from a preprocessed CSV file."""
     entries = []
     with open(source, newline="") as f:
@@ -26,13 +27,13 @@ def build_entry_lookup(source: str) -> list[dict]:
     return entries
 
 
-def _inject_entry_info(target: dict, info: dict) -> None:
+def _inject_entry_info(target: dict[str, Any], info: dict[str, Any]) -> None:
     for key in ("start_ms", "end_ms", "start_formatted", "end_formatted", "id", "text"):
         if info.get(key) is not None:
             target[key] = info[key]
 
 
-def enrich_value(value, lookup: list[dict]) -> None:
+def enrich_value(value: Any, lookup: list[dict[str, Any]]) -> None:
     """Recursively enrich JSON value with timestamp data from lookup."""
     if isinstance(value, dict):
         # If this object has a start_index, inject timestamp and id fields
@@ -62,7 +63,7 @@ def enrich_value(value, lookup: list[dict]) -> None:
             enrich_value(v, lookup)
 
 
-def collect_repeated_indices(result_json: dict) -> set[int]:
+def collect_repeated_indices(result_json: dict[str, Any]) -> set[int]:
     """Collect all entry indices covered by any repetition pattern."""
     repeated: set[int] = set()
 
@@ -97,12 +98,12 @@ def collect_repeated_indices(result_json: dict) -> set[int]:
     return repeated
 
 
-def _build_segment(lookup: list[dict], start: int, end: int, is_repeated: bool) -> dict:
+def _build_segment(lookup: list[dict[str, Any]], start: int, end: int, is_repeated: bool) -> dict[str, Any]:
     texts = [lookup[i]["text"] for i in range(start, end + 1) if lookup[i].get("text")]
     first = lookup[start] if start < len(lookup) else {}
     last = lookup[end] if end < len(lookup) else {}
 
-    seg: dict = {
+    seg: dict[str, Any] = {
         "type": "repeated" if is_repeated else "unique",
         "start_index": start,
         "end_index": end,
@@ -118,7 +119,7 @@ def _build_segment(lookup: list[dict], start: int, end: int, is_repeated: bool) 
     return seg
 
 
-def run_extract_unique(config: dict) -> None:
+def run_extract_unique(config: dict[str, Any]) -> None:
     lookup = build_entry_lookup(config["source"])
     total = len(lookup)
 
@@ -144,7 +145,7 @@ def run_extract_unique(config: dict) -> None:
     print(json.dumps(segments, indent=2, ensure_ascii=False))
 
 
-def run_enrich(config: dict) -> None:
+def run_enrich(config: dict[str, Any]) -> None:
     lookup = build_entry_lookup(config["source"])
     print(f"Loaded {len(lookup)} entries from source for enrichment lookup", file=sys.stderr)
 

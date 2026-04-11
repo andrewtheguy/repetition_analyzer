@@ -2,6 +2,7 @@
 
 import html
 import json
+from typing import Any
 
 TRUNCATE_LEN = 40
 
@@ -13,11 +14,11 @@ COLORS = {
 }
 
 
-def truncate(text, max_len=TRUNCATE_LEN):
+def truncate(text: str, max_len: int = TRUNCATE_LEN) -> str:
     return text[:max_len] + "\u2026" if len(text) > max_len else text
 
 
-def collect_items(data):
+def collect_items(data: dict[str, Any]) -> list[tuple[str, int, str, list[dict[str, str]]]]:
     items = []
 
     for dup in data.get("exact_duplicates", []):
@@ -53,7 +54,7 @@ def collect_items(data):
     return items
 
 
-def render_detail_rows(details):
+def render_detail_rows(details: list[dict[str, str]]) -> str:
     rows = ""
     for d in details:
         text = html.escape(d["text"])
@@ -64,7 +65,7 @@ def render_detail_rows(details):
     return rows
 
 
-def render_html(items):
+def render_html(items: list[tuple[str, int, str, list[dict[str, str]]]]) -> str:
     max_count = max(c for _, c, _, _ in items)
     categories_present = sorted(set(cat for _, _, cat, _ in items))
 

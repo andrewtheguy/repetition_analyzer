@@ -1,15 +1,15 @@
 """Station-specific segment classifiers."""
 
-from typing import Callable
+from typing import Any, Callable
 
 from . import knx
 
-STATIONS = {
+STATIONS: dict[str, Callable[[dict[str, Any], Callable[[dict[str, Any]], float], Callable[[dict[str, Any]], str]], str]] = {
     "knx": knx.classify,
 }
 
 
-def classify(station: str, seg: dict, duration_fn: Callable, text_blob_fn: Callable) -> str:
+def classify(station: str, seg: dict[str, Any], duration_fn: Callable[[dict[str, Any]], float], text_blob_fn: Callable[[dict[str, Any]], str]) -> str:
     classifier = STATIONS.get(station)
     if classifier is None:
         return "other"

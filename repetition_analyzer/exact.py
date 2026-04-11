@@ -1,13 +1,14 @@
 """Exact duplicate detection (Python implementation using native_helper.normalize)."""
 
 from collections import defaultdict
+from typing import Any
 
 from native_helper import normalize
 
 from .parse import Entry
 
 
-def find_exact_duplicates(entries: list[Entry]) -> list[dict]:
+def find_exact_duplicates(entries: list[Entry]) -> list[dict[str, Any]]:
     """Group entries by normalized text, returning groups with 2+ members."""
     groups: dict[str, list[int]] = defaultdict(list)
 

@@ -4,6 +4,7 @@ import csv
 import json
 import sys
 import uuid
+from typing import Any
 
 
 def ms_to_formatted(ms: int) -> str:
@@ -39,7 +40,7 @@ def formatted_to_ms(s: str) -> int | None:
 FILTER_TYPES = {"str", "bool", "int", "float"}
 
 
-def parse_filter(filter_str: str | None) -> dict | None:
+def parse_filter(filter_str: str | None) -> dict[str, str] | None:
     if not filter_str:
         return None
     key_part, _, value = filter_str.partition("=")
@@ -55,7 +56,7 @@ def parse_filter(filter_str: str | None) -> dict | None:
     return {"key": key, "value": value, "type": filter_type}
 
 
-def filter_matches(json_val, parsed_filter: dict) -> bool | None:
+def filter_matches(json_val: Any, parsed_filter: dict[str, str]) -> bool | None:
     """Check if a JSON value matches a filter. Returns True/False or raises on type mismatch."""
     if json_val is None:
         return False
@@ -85,7 +86,7 @@ def filter_matches(json_val, parsed_filter: dict) -> bool | None:
     return False
 
 
-def process_entry(obj: dict, config: dict, parsed_filter: dict | None) -> dict | None:
+def process_entry(obj: dict[str, Any], config: dict[str, Any], parsed_filter: dict[str, str] | None) -> dict[str, str] | None:
     """Process a single JSONL entry. Returns canonical row dict or None to skip."""
     # Apply filter
     if parsed_filter:
@@ -151,7 +152,7 @@ def process_entry(obj: dict, config: dict, parsed_filter: dict | None) -> dict |
     }
 
 
-def run_preprocess(config: dict) -> None:
+def run_preprocess(config: dict[str, Any]) -> None:
     parsed_filter = parse_filter(config.get("filter"))
     writer = csv.writer(sys.stdout)
     writer.writerow(["id", "text", "start_ms", "end_ms", "start_formatted", "end_formatted"])

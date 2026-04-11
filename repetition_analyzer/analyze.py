@@ -3,6 +3,7 @@
 import json
 import sys
 import time
+from typing import Any
 
 import native_helper
 
@@ -11,7 +12,7 @@ from .parse import entries_to_tuples, parse_csv
 from .report import print_json_report, print_report
 
 
-def run_analyze(config: dict) -> None:
+def run_analyze(config: dict[str, Any]) -> None:
     start = time.time()
 
     # Parse

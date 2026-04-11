@@ -1,6 +1,5 @@
 """Orchestrate all analysis steps: parse CSV, run algorithms, produce report."""
 
-import json
 import sys
 import time
 from typing import Any
@@ -61,7 +60,7 @@ def run_analyze(config: dict[str, Any]) -> None:
         config.get("max_seq_len", 8),
         config.get("seq_similarity_threshold", 0.80),
         config.get("min_seq_occurrences", 2),
-        json.dumps(sequences),
+        sequences,
     )
     print(f"Found {len(near_seqs)} near-duplicate sequence patterns ({time.time() - t:.2f}s)", file=sys.stderr)
 

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Transcription {
@@ -28,13 +28,13 @@ pub struct NgramResult {
 
 // -- sequences.rs types --
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
     pub start_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct RepeatedSequence {
     pub length: usize,
     pub occurrences: Vec<SequenceOccurrence>,

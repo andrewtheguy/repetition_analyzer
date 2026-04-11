@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
-use pythonize::pythonize;
+use pythonize::{depythonize, pythonize};
 
-use crate::types::{RepeatedSequence, SequenceOccurrence, Transcription};
+use crate::types::{RepeatedSequence, Transcription};
 use crate::{
     extract_ngrams as rust_extract_ngrams,
     find_near_duplicate_sequences as rust_find_near_duplicate_sequences,
@@ -64,42 +64,9 @@ fn find_near_duplicate_sequences_py<'py>(
     max_len: usize,
     threshold: f64,
     min_occurrences: usize,
-    exact_sequences_json: &str,
+    exact_sequences: Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // Deserialize exact sequences from JSON
-    let raw: Vec<serde_json::Value> = serde_json::from_str(exact_sequences_json)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("invalid JSON: {e}")))?;
-
-    let exact_sequences: Vec<RepeatedSequence> = raw
-        .into_iter()
-        .map(|v| {
-            let length = v["length"].as_u64().unwrap_or(0) as usize;
-            let occurrences = v["occurrences"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .map(|o| SequenceOccurrence {
-                            start_index: o["start_index"].as_u64().unwrap_or(0) as usize,
-                            start_id: o["start_id"].as_str().unwrap_or("").to_string(),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            let entry_texts = v["entry_texts"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            RepeatedSequence {
-                length,
-                occurrences,
-                entry_texts,
-            }
-        })
-        .collect();
+    let exact_sequences: Vec<RepeatedSequence> = depythonize(&exact_sequences)?;
 
     let result = rust_find_near_duplicate_sequences(
         &to_transcriptions(entries),

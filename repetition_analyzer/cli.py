@@ -67,6 +67,12 @@ def main():
     dr.add_argument("--min-gap", type=int, default=50, help="Minimum index distance between original and rebroadcast")
     dr.add_argument("--merge-gap", type=int, default=5, help="Merge blocks within this many entries of each other")
 
+    # -- pipeline --
+    pi = subparsers.add_parser("pipeline", help="Run full pipeline: preprocess → clip → analyze → enrich → plot")
+    pi.add_argument("file", help="Path to the JSONL file")
+    pi.add_argument("--preset", choices=["kmrb"], default=None, help="Station preset (applies clipping and filter defaults)")
+    pi.add_argument("extra_analyze_args", nargs="*", help="Extra flags passed to analyze (e.g. --min-count 5)")
+
     # -- plot --
     pl = subparsers.add_parser("plot", help="Generate HTML visualization from enriched JSON")
     pl.add_argument("file", help="Path to the enriched JSON file")
@@ -133,6 +139,13 @@ def main():
             "similarity_threshold": args.similarity_threshold,
             "min_gap": args.min_gap,
             "merge_gap": args.merge_gap,
+        })
+    elif args.command == "pipeline":
+        from .pipeline import run_pipeline
+        run_pipeline({
+            "file": args.file,
+            "preset": args.preset,
+            "extra_analyze_args": args.extra_analyze_args,
         })
     elif args.command == "plot":
         from .plot import run_plot

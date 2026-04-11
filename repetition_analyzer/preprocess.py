@@ -25,6 +25,8 @@ def formatted_to_ms(s: str) -> int | None:
     hms_parts = hms.split(":")
     if len(hms_parts) != 3:
         return None
+    # Normalize fractional seconds to exactly 3 digits (milliseconds)
+    millis_str = millis_str[:3].ljust(3, "0")
     try:
         hours = int(hms_parts[0])
         minutes = int(hms_parts[1])

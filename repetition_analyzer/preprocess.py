@@ -88,6 +88,24 @@ def filter_matches(json_val: Any, parsed_filter: dict[str, str]) -> bool | None:
     return False
 
 
+def truncate_hallucinated_repeats(text: str, min_repeats: int = 10, max_pattern_len: int = 30) -> str:
+    """Truncate consecutively repeating patterns caused by speech-to-text hallucination."""
+    n = len(text)
+    if n < 100:
+        return text
+    for pat_len in range(2, min(max_pattern_len + 1, n // min_repeats + 1)):
+        for start in range(n - pat_len * min_repeats + 1):
+            pattern = text[start : start + pat_len]
+            pos = start + pat_len
+            count = 1
+            while pos + pat_len <= n and text[pos : pos + pat_len] == pattern:
+                count += 1
+                pos += pat_len
+            if count >= min_repeats:
+                return text[: start + pat_len] + "(indistinguishable speech)"
+    return text
+
+
 def process_entry(obj: dict[str, Any], config: dict[str, Any], parsed_filter: dict[str, str] | None) -> dict[str, str] | None:
     """Process a single JSONL entry. Returns canonical row dict or None to skip."""
     # Apply filter
@@ -103,6 +121,7 @@ def process_entry(obj: dict[str, Any], config: dict[str, Any], parsed_filter: di
     text = obj.get(config["text_key"])
     if not text or not isinstance(text, str) or not text.strip():
         return None
+    text = truncate_hallucinated_repeats(text)
 
     # ID
     id_key = config.get("id_key")

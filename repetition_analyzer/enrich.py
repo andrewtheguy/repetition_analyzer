@@ -98,6 +98,43 @@ def collect_repeated_indices(result_json: dict[str, Any]) -> set[int]:
     return repeated
 
 
+def _consolidate_repeated(
+    repeated: set[int], max_unique_gap: int, min_repeated_island: int,
+) -> set[int]:
+    """Consolidate repeated indices to reduce fragmentation.
+
+    Pass 1 (close): fill unique gaps of <= max_unique_gap between repeated indices.
+    Pass 2 (open): remove contiguous repeated runs of <= min_repeated_island entries.
+    """
+    if not repeated:
+        return repeated
+
+    result = set(repeated)
+
+    # Pass 1: close gaps between nearby repeated indices.
+    sorted_rep = sorted(result)
+    for a, b in zip(sorted_rep, sorted_rep[1:]):
+        gap = b - a - 1
+        if 0 < gap <= max_unique_gap:
+            result.update(range(a + 1, b))
+
+    # Pass 2: remove small repeated islands.
+    sorted_result = sorted(result)
+    runs: list[tuple[int, int]] = []
+    run_start = sorted_result[0]
+    for i in range(1, len(sorted_result)):
+        if sorted_result[i] != sorted_result[i - 1] + 1:
+            runs.append((run_start, sorted_result[i - 1]))
+            run_start = sorted_result[i]
+    runs.append((run_start, sorted_result[-1]))
+
+    for start, end in runs:
+        if end - start + 1 <= min_repeated_island:
+            result.difference_update(range(start, end + 1))
+
+    return result
+
+
 def _build_segment(lookup: list[dict[str, Any]], start: int, end: int, is_repeated: bool) -> dict[str, Any]:
     texts = [lookup[i]["text"] for i in range(start, end + 1) if lookup[i].get("text")]
     first = lookup[start] if start < len(lookup) else {}
@@ -126,8 +163,16 @@ def run_extract_unique(config: dict[str, Any]) -> None:
     with open(config["result"]) as f:
         result_json = json.load(f)
 
-    repeated = collect_repeated_indices(result_json)
-    print(f"{len(repeated)} / {total} entries covered by repetition patterns", file=sys.stderr)
+    raw_repeated = collect_repeated_indices(result_json)
+    repeated = _consolidate_repeated(
+        raw_repeated,
+        max_unique_gap=config.get("max_unique_gap", 3),
+        min_repeated_island=config.get("min_repeated_island", 2),
+    )
+    print(
+        f"{len(raw_repeated)} raw / {len(repeated)} consolidated / {total} total entries",
+        file=sys.stderr,
+    )
 
     segments = []
     if total > 0:

@@ -45,6 +45,8 @@ def main():
     eu = subparsers.add_parser("extract-unique", help="Segment entries into unique/repeated ranges")
     eu.add_argument("--source", required=True, help="Path to the preprocessed CSV source file")
     eu.add_argument("--result", required=True, help="Path to the JSON result file from analyze")
+    eu.add_argument("--max-unique-gap", type=int, default=3, help="Absorb unique gaps of this size or less between repeated segments")
+    eu.add_argument("--min-repeated-island", type=int, default=0, help="Absorb repeated islands of this size or less into surrounding unique")
 
     # -- extract-segments --
     es = subparsers.add_parser("extract-segments", help="Extract segments to files")
@@ -115,7 +117,12 @@ def main():
         run_enrich({"source": args.source, "result": args.result})
     elif args.command == "extract-unique":
         from .enrich import run_extract_unique
-        run_extract_unique({"source": args.source, "result": args.result})
+        run_extract_unique({
+            "source": args.source,
+            "result": args.result,
+            "max_unique_gap": args.max_unique_gap,
+            "min_repeated_island": args.min_repeated_island,
+        })
     elif args.command == "extract-segments":
         from .extract import run_extract_segments
         run_extract_segments({

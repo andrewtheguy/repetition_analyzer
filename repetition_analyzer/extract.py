@@ -97,7 +97,7 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
         for t in texts:
             full_lines += f"<p>{html.escape(t)}</p>\n"
 
-        rows += f"""<div class="segment" onclick="toggle({i})">
+        rows += f"""<div class="segment" id="seg-{i}" onclick="toggle({i})">
   <div class="seg-header">
     <span class="seg-time">{start} \u2013 {end}</span>
     <span class="seg-count">{count} entries</span>
@@ -105,7 +105,7 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
     {rep_badge}
   </div>
   <div class="seg-preview">{preview_lines}</div>
-  <div class="seg-full" id="full-{i}">{full_lines}</div>
+  <div class="seg-full">{full_lines}</div>
 </div>
 """
 
@@ -126,10 +126,11 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
   .seg-duration {{ color: #999; font-size: 0.85em; }}
   .seg-rep {{ color: #e74c3c; font-size: 0.85em; font-weight: 600; }}
   .seg-preview {{ font-size: 0.85em; color: #444; }}
+  .segment.open .seg-preview {{ display: none; }}
   .preview-line {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .preview-more {{ color: #999; font-style: italic; }}
   .seg-full {{ display: none; font-size: 0.85em; line-height: 1.6; margin-top: 8px; border-top: 1px solid #eee; padding-top: 8px; }}
-  .seg-full.open {{ display: block; }}
+  .segment.open .seg-full {{ display: block; }}
   .seg-full p {{ margin: 0.3em 0; }}
 </style>
 </head>
@@ -139,7 +140,7 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
 {rows}
 <script>
 function toggle(i) {{
-  var el = document.getElementById('full-' + i);
+  var el = document.getElementById('seg-' + i);
   el.classList.toggle('open');
 }}
 </script>

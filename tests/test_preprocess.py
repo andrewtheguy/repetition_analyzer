@@ -7,6 +7,7 @@ from repetition_analyzer.preprocess import (
     ms_to_formatted,
     parse_filter,
     process_entry,
+    truncate_hallucinated_repeats,
 )
 
 
@@ -90,3 +91,48 @@ def test_errors_on_missing_end_timestamp():
 def test_errors_on_invalid_formatted_timestamp():
     with pytest.raises(ValueError, match="invalid start timestamp format"):
         _apply({"text": "hi", "start_formatted": "bad", "end_formatted": "00:00:01.000"})
+
+
+# -- truncate_hallucinated_repeats tests --
+
+
+def test_truncate_short_text_unchanged():
+    assert truncate_hallucinated_repeats("short") == "short"
+    assert truncate_hallucinated_repeats("a" * 99) == "a" * 99
+
+
+_FILLER = "the quick brown fox jumps over the lazy dog and some more words to pad this out beyond one hundred characters easily"
+
+
+def test_truncate_no_repeats():
+    assert truncate_hallucinated_repeats(_FILLER) == _FILLER
+
+
+def test_truncate_simple_repeat():
+    text = _FILLER + " " + "ab" * 15
+    result = truncate_hallucinated_repeats(text, min_repeats=10)
+    assert result == _FILLER + " " + "ab" + "(indistinguishable speech)"
+
+
+def test_truncate_repeat_at_start():
+    text = "ab" * 60
+    result = truncate_hallucinated_repeats(text, min_repeats=10)
+    assert result == "ab(indistinguishable speech)"
+
+
+def test_truncate_longer_pattern():
+    text = _FILLER + " " + "hello" * 12
+    result = truncate_hallucinated_repeats(text, min_repeats=10)
+    assert result == _FILLER + " " + "hello" + "(indistinguishable speech)"
+
+
+def test_truncate_just_below_threshold():
+    # 9 repeats with min_repeats=10 should not truncate
+    text = _FILLER + " " + "ab" * 9 + " end"
+    assert truncate_hallucinated_repeats(text, min_repeats=10) == text
+
+
+def test_truncate_respects_min_repeats():
+    text = "ab" * 60
+    result = truncate_hallucinated_repeats(text, min_repeats=5)
+    assert result == "ab(indistinguishable speech)"

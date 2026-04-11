@@ -24,13 +24,15 @@ def _filename(seg: dict[str, Any], offset_ms: int = 0) -> str:
     start = _offset_ts(seg.get("start_formatted", "?"), offset_ms).replace(":", "_")
     end = _offset_ts(seg.get("end_formatted", "?"), offset_ms).replace(":", "_")
     tag = seg["type"][0]
-    return f"{start}--{end}_{tag}_{seg['entry_count']}entries.txt"
+    rep = f"_x{seg['rep_count']}" if seg.get("rep_count") else ""
+    return f"{start}--{end}_{tag}_{seg['entry_count']}entries{rep}.txt"
 
 
 def _header(seg: dict[str, Any], offset_ms: int = 0) -> str:
     start = _offset_ts(seg.get("start_formatted", "?"), offset_ms)
     end = _offset_ts(seg.get("end_formatted", "?"), offset_ms)
-    return f"{start} - {end} ({seg['entry_count']} entries)"
+    rep = f", {seg['rep_count']}x" if seg.get("rep_count") else ""
+    return f"{start} - {end} ({seg['entry_count']} entries{rep})"
 
 
 def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: str, offset_ms: int = 0) -> None:
@@ -72,8 +74,11 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
         start = _offset_ts(seg.get("start_formatted", "?"), offset_ms)
         end = _offset_ts(seg.get("end_formatted", "?"), offset_ms)
         count = seg["entry_count"]
+        rep_count = seg.get("rep_count", 0)
         duration_ms = seg.get("end_ms", 0) - seg.get("start_ms", 0)
         duration_min = duration_ms / 60000
+
+        rep_badge = f'<span class="seg-rep">{rep_count}x</span>' if rep_count else ""
 
         preview_lines = ""
         texts = seg.get("texts", [])
@@ -94,6 +99,7 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
     <span class="seg-time">{start} \u2013 {end}</span>
     <span class="seg-count">{count} entries</span>
     <span class="seg-duration">{duration_min:.1f} min</span>
+    {rep_badge}
   </div>
   <div class="seg-preview">{preview_lines}</div>
   <div class="seg-full" id="full-{i}">{full_lines}</div>
@@ -115,6 +121,7 @@ def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms:
   .seg-time {{ font-weight: 600; font-size: 0.95em; }}
   .seg-count {{ color: #666; font-size: 0.85em; }}
   .seg-duration {{ color: #999; font-size: 0.85em; }}
+  .seg-rep {{ color: #e74c3c; font-size: 0.85em; font-weight: 600; }}
   .seg-preview {{ font-size: 0.85em; color: #444; }}
   .preview-line {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .preview-more {{ color: #999; font-style: italic; }}

@@ -53,6 +53,20 @@ def main():
     es.add_argument("--long-threshold", type=int, default=10, help="Segments >= this go to individual files")
     es.add_argument("--outdir", required=True, help="Output directory")
 
+    # -- clip --
+    cl = subparsers.add_parser("clip", help="Clip CSV to a time range")
+    cl.add_argument("file", help="Path to the preprocessed CSV file")
+    cl.add_argument("--after", default=None, help="Drop entries starting after this time (HH:MM:SS.mmm or milliseconds)")
+    cl.add_argument("--before", default=None, help="Drop entries starting before this time (HH:MM:SS.mmm or milliseconds)")
+
+    # -- detect-rebroadcast (experimental) --
+    dr = subparsers.add_parser("detect-rebroadcast", help="[experimental] Detect rebroadcast blocks in a CSV file")
+    dr.add_argument("file", help="Path to the preprocessed CSV file")
+    dr.add_argument("--min-block-length", type=int, default=10, help="Minimum matched entries per block")
+    dr.add_argument("--similarity-threshold", type=float, default=0.7, help="Minimum similarity for a match")
+    dr.add_argument("--min-gap", type=int, default=50, help="Minimum index distance between original and rebroadcast")
+    dr.add_argument("--merge-gap", type=int, default=5, help="Merge blocks within this many entries of each other")
+
     # -- plot --
     pl = subparsers.add_parser("plot", help="Generate HTML visualization from enriched JSON")
     pl.add_argument("file", help="Path to the enriched JSON file")
@@ -103,6 +117,22 @@ def main():
             "min_entries": args.min_entries,
             "long_threshold": args.long_threshold,
             "outdir": args.outdir,
+        })
+    elif args.command == "clip":
+        from .clip import run_clip
+        run_clip({
+            "file": args.file,
+            "after": args.after,
+            "before": args.before,
+        })
+    elif args.command == "detect-rebroadcast":
+        from .rebroadcast import run_detect_rebroadcast
+        run_detect_rebroadcast({
+            "file": args.file,
+            "min_block_length": args.min_block_length,
+            "similarity_threshold": args.similarity_threshold,
+            "min_gap": args.min_gap,
+            "merge_gap": args.merge_gap,
         })
     elif args.command == "plot":
         from .plot import run_plot

@@ -18,15 +18,10 @@ def run_analyze(config: dict[str, Any]) -> None:
     entries = parse_csv(config["file"])
     print(f"Loaded {len(entries)} entries ({time.time() - t:.2f}s)", file=sys.stderr)
 
-    # Exact duplicates (Rust)
+    # Exact + near-duplicates (Rust, single call — near excludes exact entries)
     t = time.time()
-    duplicates = _native.find_exact_duplicates(entries)
-    print(f"Found {len(duplicates)} duplicate groups ({time.time() - t:.2f}s)", file=sys.stderr)
-
-    # Near-duplicates (Rust)
-    t = time.time()
-    near_dupes = _native.find_near_duplicates(entries, config.get("similarity_threshold", 0.85))
-    print(f"Found {len(near_dupes)} near-duplicate clusters ({time.time() - t:.2f}s)", file=sys.stderr)
+    duplicates, near_dupes = _native.find_all_duplicates(entries, config.get("similarity_threshold", 0.85))
+    print(f"Found {len(duplicates)} duplicate groups + {len(near_dupes)} near-duplicate clusters ({time.time() - t:.2f}s)", file=sys.stderr)
 
     # N-grams (Rust)
     t = time.time()

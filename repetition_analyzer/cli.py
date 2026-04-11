@@ -49,7 +49,6 @@ def main():
     # -- extract-segments --
     es = subparsers.add_parser("extract-segments", help="Extract segments to files")
     es.add_argument("--segments", required=True, help="Path to the segments JSON from extract-unique")
-    es.add_argument("--station", default=None, help="Station-specific classifier (e.g., knx)")
     es.add_argument("--min-entries", type=int, default=3, help="Minimum entry count to include")
     es.add_argument("--long-threshold", type=int, default=10, help="Segments >= this go to individual files")
     es.add_argument("--outdir", required=True, help="Output directory")
@@ -101,7 +100,6 @@ def main():
         from .extract import run_extract_segments
         run_extract_segments({
             "segments": args.segments,
-            "station": args.station,
             "min_entries": args.min_entries,
             "long_threshold": args.long_threshold,
             "outdir": args.outdir,

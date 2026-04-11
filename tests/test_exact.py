@@ -30,6 +30,25 @@ def test_no_duplicates():
     assert len(groups) == 0
 
 
+def test_near_duplicates_exclude_exact():
+    # Entries 0-2 are exact duplicates; entry 3 is a near-duplicate variant.
+    # Without exclusion, all four would form a near-duplicate cluster.
+    # The fix ensures exact entries are excluded from near-duplicate detection.
+    entries = [
+        _entry(0, "粵語新聞報道時間"),
+        _entry(1, "粵語新聞報道時間"),
+        _entry(2, "粵語新聞報道時間"),
+        _entry(3, "粵語新聞報導時間到"),
+    ]
+    exact, near = find_all_duplicates(entries, 0.70)
+    assert len(exact) == 1
+    assert exact[0]["count"] == 3
+    exact_indices = {i for i, _ in exact[0]["indices"]}
+    assert exact_indices == {0, 1, 2}
+    # Entry 3 alone cannot form a cluster (needs >= 2 members)
+    assert len(near) == 0
+
+
 def test_exact_duplicates_with_ids():
     entries = [
         Entry(index=0, id="aaa", text="Hello world"),

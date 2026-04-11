@@ -4,8 +4,7 @@ import sys
 import time
 from typing import Any
 
-import native_helper
-
+from . import _native
 from .parse import parse_csv
 from .report import print_json_report, print_report
 
@@ -21,17 +20,17 @@ def run_analyze(config: dict[str, Any]) -> None:
 
     # Exact duplicates (Rust)
     t = time.time()
-    duplicates = native_helper.find_exact_duplicates(entries)
+    duplicates = _native.find_exact_duplicates(entries)
     print(f"Found {len(duplicates)} duplicate groups ({time.time() - t:.2f}s)", file=sys.stderr)
 
     # Near-duplicates (Rust)
     t = time.time()
-    near_dupes = native_helper.find_near_duplicates(entries, config.get("similarity_threshold", 0.85))
+    near_dupes = _native.find_near_duplicates(entries, config.get("similarity_threshold", 0.85))
     print(f"Found {len(near_dupes)} near-duplicate clusters ({time.time() - t:.2f}s)", file=sys.stderr)
 
     # N-grams (Rust)
     t = time.time()
-    ngrams = native_helper.extract_ngrams(
+    ngrams = _native.extract_ngrams(
         entries,
         config.get("min_ngram", 3),
         config.get("max_ngram", 8),
@@ -41,7 +40,7 @@ def run_analyze(config: dict[str, Any]) -> None:
 
     # Repeated + near-duplicate sequences (Rust, single call)
     t = time.time()
-    sequences, near_seqs = native_helper.find_all_sequences(
+    sequences, near_seqs = _native.find_all_sequences(
         entries,
         config.get("min_seq_len", 2),
         config.get("max_seq_len", 8),

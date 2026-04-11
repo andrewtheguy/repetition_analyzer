@@ -67,7 +67,7 @@ fn find_all_sequences_py<'py>(
 }
 
 #[pymodule]
-#[pyo3(name = "native_helper")]
+#[pyo3(name = "_native")]
 fn native_helper(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(find_exact_duplicates_py, module)?)?;
     module.add_function(wrap_pyfunction!(find_near_duplicates_py, module)?)?;

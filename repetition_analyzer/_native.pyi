@@ -1,6 +1,6 @@
 from typing import Any
 
-from repetition_analyzer.parse import Entry
+from .parse import Entry
 
 def find_exact_duplicates(entries: list[Entry]) -> list[dict[str, Any]]: ...
 def find_near_duplicates(entries: list[Entry], threshold: float) -> list[dict[str, Any]]: ...

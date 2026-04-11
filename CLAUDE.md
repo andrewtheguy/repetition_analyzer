@@ -4,5 +4,5 @@
 - Python code lives in `repetition_analyzer/`.
 - Lint Python: `uv run ruff check` and `uv run basedpyright`.
 - Run `uv run pytest` for Python tests.
-- Build native extension: `maturin develop --manifest-path native-helper/Cargo.toml --features python --skip-install`
+- Build native extension: `uv run maturin develop --skip-install`
 - Use ./tmp for temporary artifacts.

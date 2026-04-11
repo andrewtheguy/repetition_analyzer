@@ -1,6 +1,6 @@
 [build-system]
-requires = ["maturin>=1.9.4,<2.0"]
-build-backend = "maturin"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "repetition-analyzer"
@@ -17,23 +17,7 @@ dev = ["pytest>=8.0", "ruff", "basedpyright", "maturin>=1.9.4"]
 [tool.maturin]
 manifest-path = "native-helper/Cargo.toml"
 features = ["python"]
-python-packages = ["repetition_analyzer"]
+module-name = "repetition_analyzer._native"
 
 [tool.pyright]
-stubPath = "native-helper"
 exclude = [".venv", "build", "dist", ".git", "tests", "native-helper", "tmp"]
-reportUnknownParameterType = true
-reportUninitializedInstanceVariable = true
-reportMissingTypeStubs = false
-reportExplicitAny = false
-reportAny = false
-reportUnannotatedClassAttribute = false
-reportUnknownMemberType = false
-reportUnknownVariableType = false
-reportUnknownArgumentType = false
-reportUnknownLambdaType = false
-reportImplicitStringConcatenation = false
-reportMissingImports = true
-reportMissingModuleSource = false
-reportUnusedCallResult = false
-reportImplicitOverride = false

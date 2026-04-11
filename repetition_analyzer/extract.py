@@ -9,61 +9,68 @@ from typing import Any
 TRUNCATE_LEN = 60
 
 
-def _sanitize_ts(ts: str) -> str:
-    return ts.split(".")[0]
+def _offset_ts(ts: str, offset_ms: int) -> str:
+    """Add offset to a HH:MM:SS.mmm timestamp and strip millis."""
+    if not ts or ts == "?":
+        return ts
+    from .preprocess import formatted_to_ms, ms_to_formatted
+    ms = formatted_to_ms(ts)
+    if ms is None:
+        return ts.split(".")[0]
+    return ms_to_formatted(ms + offset_ms).split(".")[0]
 
 
-def _filename(seg: dict[str, Any]) -> str:
-    start = _sanitize_ts(seg.get("start_formatted", "?")).replace(":", "_")
-    end = _sanitize_ts(seg.get("end_formatted", "?")).replace(":", "_")
+def _filename(seg: dict[str, Any], offset_ms: int = 0) -> str:
+    start = _offset_ts(seg.get("start_formatted", "?"), offset_ms).replace(":", "_")
+    end = _offset_ts(seg.get("end_formatted", "?"), offset_ms).replace(":", "_")
     tag = seg["type"][0]
     return f"{start}--{end}_{tag}_{seg['entry_count']}entries.txt"
 
 
-def _header(seg: dict[str, Any]) -> str:
-    start = _sanitize_ts(seg.get("start_formatted", "?"))
-    end = _sanitize_ts(seg.get("end_formatted", "?"))
+def _header(seg: dict[str, Any], offset_ms: int = 0) -> str:
+    start = _offset_ts(seg.get("start_formatted", "?"), offset_ms)
+    end = _offset_ts(seg.get("end_formatted", "?"), offset_ms)
     return f"{start} - {end} ({seg['entry_count']} entries)"
 
 
-def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: str) -> None:
+def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: str, offset_ms: int = 0) -> None:
     with open(path, "w") as f:
         f.write(f"# {title}\n\n")
         for seg in segments:
-            f.write(f"## {_header(seg)}\n\n")
+            f.write(f"## {_header(seg, offset_ms)}\n\n")
             for text in seg.get("texts", []):
                 f.write(f"{text}\n\n")
             f.write("---\n\n")
 
 
-def _write_individual_files(folder: Path, segments: list[dict[str, Any]]) -> None:
+def _write_individual_files(folder: Path, segments: list[dict[str, Any]], offset_ms: int = 0) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     for seg in segments:
-        with open(folder / _filename(seg), "w") as f:
+        with open(folder / _filename(seg, offset_ms), "w") as f:
             for text in seg.get("texts", []):
                 f.write(f"{text}\n")
 
 
-def _output_category(outdir: Path, category: str, segments: list[dict[str, Any]], long_threshold: int) -> None:
+def _output_category(outdir: Path, category: str, segments: list[dict[str, Any]], long_threshold: int, offset_ms: int = 0) -> None:
     short = [s for s in segments if s["entry_count"] < long_threshold]
     long = [s for s in segments if s["entry_count"] >= long_threshold]
 
     if short:
         md_path = outdir / f"{category}_short.md"
-        _write_consolidated_md(md_path, short, f"{category} (short)")
+        _write_consolidated_md(md_path, short, f"{category} (short)", offset_ms)
         print(f"  {len(short):>4} short -> {md_path}", file=sys.stderr)
 
     if long:
         folder = outdir / f"{category}_long"
-        _write_individual_files(folder, long)
+        _write_individual_files(folder, long, offset_ms)
         print(f"  {len(long):>4} long  -> {folder}/", file=sys.stderr)
 
 
-def _render_segments_html(segments: list[dict[str, Any]], title: str) -> str:
+def _render_segments_html(segments: list[dict[str, Any]], title: str, offset_ms: int = 0) -> str:
     rows = ""
     for i, seg in enumerate(segments):
-        start = _sanitize_ts(seg.get("start_formatted", "?"))
-        end = _sanitize_ts(seg.get("end_formatted", "?"))
+        start = _offset_ts(seg.get("start_formatted", "?"), offset_ms)
+        end = _offset_ts(seg.get("end_formatted", "?"), offset_ms)
         count = seg["entry_count"]
         duration_ms = seg.get("end_ms", 0) - seg.get("start_ms", 0)
         duration_min = duration_ms / 60000
@@ -140,6 +147,7 @@ def run_extract_segments(config: dict[str, Any]) -> None:
         print("No segments match the criteria.", file=sys.stderr)
         return
 
+    offset_ms = int(config.get("time_offset_hours", 0) * 3600 * 1000)
     outdir = Path(config["outdir"])
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -148,14 +156,14 @@ def run_extract_segments(config: dict[str, Any]) -> None:
 
     if unique:
         print(f"Unique: {len(unique)} segments", file=sys.stderr)
-        _output_category(outdir, "unique", unique, config.get("long_threshold", 10))
+        _output_category(outdir, "unique", unique, config.get("long_threshold", 10), offset_ms)
         html_path = outdir / "unique.html"
-        html_path.write_text(_render_segments_html(unique, "Unique segments"))
+        html_path.write_text(_render_segments_html(unique, "Unique segments", offset_ms))
         print(f"         -> {html_path}", file=sys.stderr)
 
     if repeated:
         print(f"Repeated: {len(repeated)} segments", file=sys.stderr)
-        _output_category(outdir, "repeated", repeated, config.get("long_threshold", 10))
+        _output_category(outdir, "repeated", repeated, config.get("long_threshold", 10), offset_ms)
         html_path = outdir / "repeated.html"
-        html_path.write_text(_render_segments_html(repeated, "Repeated segments"))
+        html_path.write_text(_render_segments_html(repeated, "Repeated segments", offset_ms))
         print(f"           -> {html_path}", file=sys.stderr)

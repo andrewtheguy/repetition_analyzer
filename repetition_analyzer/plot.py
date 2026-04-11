@@ -2,6 +2,7 @@
 
 import html
 import json
+from pathlib import Path
 from typing import Any
 
 TRUNCATE_LEN = 40
@@ -141,12 +142,11 @@ def run_plot(path: str) -> None:
         print("No repetitions found.")
         return
 
-    from pathlib import Path as P
-    p = P(path)
-    if p.stem.endswith("_enriched"):
-        out = str(p.with_stem(p.stem.removesuffix("_enriched") + "_repetitions").with_suffix(".html"))
+    path_obj = Path(path)
+    if path_obj.stem.endswith("_enriched"):
+        out = str(path_obj.with_stem(path_obj.stem.removesuffix("_enriched") + "_repetitions").with_suffix(".html"))
     else:
-        out = str(p.with_stem(p.stem + "_repetitions").with_suffix(".html"))
+        out = str(path_obj.with_stem(path_obj.stem + "_repetitions").with_suffix(".html"))
     with open(out, "w") as f:
         f.write(render_html(items))
     print(f"Saved to {out}")

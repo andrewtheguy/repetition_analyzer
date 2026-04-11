@@ -118,20 +118,78 @@ pub fn find_near_duplicates(
 mod tests {
     use super::*;
 
-    fn entry(index: usize, text: &str) -> Transcription {
+    fn entry(index: usize, id: &str, text: &str) -> Transcription {
         Transcription {
             index,
-            id: index.to_string(),
+            id: id.to_string(),
             text: text.to_string(),
         }
     }
 
     #[test]
+    fn exact_duplicates_group_by_normalized_text_and_sort_by_count() {
+        let entries = vec![
+            entry(10, "alpha", "Hello, World!"),
+            entry(11, "beta", "HELLO WORLD"),
+            entry(12, "gamma", "hello world??"),
+            entry(20, "delta", "A unique entry"),
+            entry(30, "epsilon", "Second Group"),
+            entry(31, "zeta", "second-group"),
+        ];
+
+        assert_eq!(normalize(&entries[0].text), normalize(&entries[1].text));
+        assert_eq!(normalize(&entries[1].text), normalize(&entries[2].text));
+        assert_eq!(normalize(&entries[4].text), normalize(&entries[5].text));
+        assert_ne!(normalize(&entries[0].text), normalize(&entries[3].text));
+
+        let groups: Vec<ExactDuplicateGroup> = find_exact_duplicates(&entries);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].count, 3);
+        assert_eq!(groups[1].count, 2);
+        assert!(groups[0].count > groups[1].count);
+
+        assert_eq!(groups[0].canonical_text, entries[0].text);
+        assert_eq!(
+            groups[0].indices,
+            vec![
+                (entries[0].index, entries[0].id.clone()),
+                (entries[1].index, entries[1].id.clone()),
+                (entries[2].index, entries[2].id.clone()),
+            ]
+        );
+
+        assert_eq!(groups[1].canonical_text, entries[4].text);
+        assert_eq!(
+            groups[1].indices,
+            vec![
+                (entries[4].index, entries[4].id.clone()),
+                (entries[5].index, entries[5].id.clone()),
+            ]
+        );
+    }
+
+    #[test]
+    fn exact_duplicates_exclude_singletons() {
+        let entries = vec![
+            entry(100, "one", "Only once"),
+            entry(101, "two", "Still unique"),
+            entry(102, "three", "Another unique line"),
+        ];
+
+        assert_ne!(normalize(&entries[0].text), normalize(&entries[1].text));
+        assert_ne!(normalize(&entries[1].text), normalize(&entries[2].text));
+
+        let groups = find_exact_duplicates(&entries);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
     fn near_duplicates_clustered() {
         let entries = vec![
-            entry(0, "The quick brown fox jumps over the lazy dog"),
-            entry(1, "The quick brown fox leaps over the lazy dog"),
-            entry(2, "Something completely different and unrelated here"),
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox leaps over the lazy dog"),
+            entry(2, "2", "Something completely different and unrelated here"),
         ];
         let clusters = find_near_duplicates(&entries, 0.80);
         assert_eq!(clusters.len(), 1);
@@ -142,8 +200,8 @@ mod tests {
     #[test]
     fn near_duplicates_low_threshold_no_match() {
         let entries = vec![
-            entry(0, "The quick brown fox jumps over the lazy dog"),
-            entry(1, "The quick brown fox leaps over the lazy dog"),
+            entry(0, "0", "The quick brown fox jumps over the lazy dog"),
+            entry(1, "1", "The quick brown fox leaps over the lazy dog"),
         ];
         // Very high threshold should not match
         let clusters = find_near_duplicates(&entries, 0.99);
@@ -154,8 +212,8 @@ mod tests {
     fn near_duplicates_different_prefix_no_match() {
         // Different first 3 words means different buckets, so no comparison
         let entries = vec![
-            entry(0, "Alpha beta gamma some long text here for similarity"),
-            entry(1, "Delta epsilon zeta some long text here for similarity"),
+            entry(0, "0", "Alpha beta gamma some long text here for similarity"),
+            entry(1, "1", "Delta epsilon zeta some long text here for similarity"),
         ];
         let clusters = find_near_duplicates(&entries, 0.50);
         assert!(clusters.is_empty());

@@ -131,7 +131,7 @@ wheels = [
 
 [[package]]
 name = "repetition-analyzer"
-version = "0.0.1"
+version = "0.0.2a1"
 source = { editable = "." }
 
 [package.dev-dependencies]

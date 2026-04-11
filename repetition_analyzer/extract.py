@@ -1,11 +1,9 @@
-"""Segment extraction: write segments to markdown/text files with optional station classification."""
+"""Segment extraction: write segments to markdown/text files."""
 
 import json
 import sys
 from pathlib import Path
 from typing import Any
-
-from .stations import classify
 
 
 def _sanitize_ts(ts: str) -> str:
@@ -23,14 +21,6 @@ def _header(seg: dict[str, Any]) -> str:
     start = _sanitize_ts(seg.get("start_formatted", "?"))
     end = _sanitize_ts(seg.get("end_formatted", "?"))
     return f"{start} - {end} ({seg['entry_count']} entries)"
-
-
-def _duration_secs(seg: dict[str, Any]) -> float:
-    return (seg.get("end_ms", 0) - seg.get("start_ms", 0)) / 1000.0
-
-
-def _text_blob(seg: dict[str, Any]) -> str:
-    return " ".join(seg.get("texts", [])).lower()
 
 
 def _write_consolidated_md(path: Path, segments: list[dict[str, Any]], title: str) -> None:
@@ -87,18 +77,5 @@ def run_extract_segments(config: dict[str, Any]) -> None:
         _output_category(outdir, "unique", unique, config.get("long_threshold", 10))
 
     if repeated:
-        station = config.get("station")
-        if station:
-            from collections import defaultdict
-            categorized: dict[str, list[dict[str, Any]]] = defaultdict(list)
-            for seg in repeated:
-                cat = classify(station, seg, _duration_secs, _text_blob)
-                categorized[cat].append(seg)
-
-            for cat in sorted(categorized):
-                cat_segs = categorized[cat]
-                print(f"Repeated/{cat}: {len(cat_segs)} segments", file=sys.stderr)
-                _output_category(outdir, f"repeated_{cat}", cat_segs, config.get("long_threshold", 10))
-        else:
-            print(f"Repeated: {len(repeated)} segments", file=sys.stderr)
-            _output_category(outdir, "repeated", repeated, config.get("long_threshold", 10))
+        print(f"Repeated: {len(repeated)} segments", file=sys.stderr)
+        _output_category(outdir, "repeated", repeated, config.get("long_threshold", 10))

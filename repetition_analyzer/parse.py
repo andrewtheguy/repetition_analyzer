@@ -29,8 +29,3 @@ def parse_csv(path: str) -> list[Entry]:
             entries.append(Entry(index=line_num, id=entry_id, text=text))
 
     return entries
-
-
-def entries_to_tuples(entries: list[Entry]) -> list[tuple[int, str, str]]:
-    """Convert entries to the tuple format expected by native_helper."""
-    return [(e.index, e.id, e.text) for e in entries]

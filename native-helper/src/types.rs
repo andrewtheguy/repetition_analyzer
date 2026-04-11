@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "python", derive(pyo3::FromPyObject))]
 pub struct Transcription {
     pub index: usize,
     pub id: String,
@@ -8,6 +9,13 @@ pub struct Transcription {
 }
 
 // -- exact.rs types --
+
+#[derive(Debug, Serialize)]
+pub struct ExactDuplicateGroup {
+    pub canonical_text: String,
+    pub count: usize,
+    pub indices: Vec<(usize, String)>, // (index, id)
+}
 
 #[derive(Debug, Serialize)]
 pub struct NearDuplicateCluster {
@@ -28,13 +36,13 @@ pub struct NgramResult {
 
 // -- sequences.rs types --
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct SequenceOccurrence {
     pub start_index: usize,
     pub start_id: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct RepeatedSequence {
     pub length: usize,
     pub occurrences: Vec<SequenceOccurrence>,

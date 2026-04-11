@@ -6,8 +6,7 @@ from typing import Any
 
 import native_helper
 
-from .exact import find_exact_duplicates
-from .parse import entries_to_tuples, parse_csv
+from .parse import parse_csv
 from .report import print_json_report, print_report
 
 
@@ -20,49 +19,36 @@ def run_analyze(config: dict[str, Any]) -> None:
     entries = parse_csv(config["file"])
     print(f"Loaded {len(entries)} entries ({time.time() - t:.2f}s)", file=sys.stderr)
 
-    tuples = entries_to_tuples(entries)
-
-    # Exact duplicates (Python)
+    # Exact duplicates (Rust)
     t = time.time()
-    duplicates = find_exact_duplicates(entries)
+    duplicates = native_helper.find_exact_duplicates(entries)
     print(f"Found {len(duplicates)} duplicate groups ({time.time() - t:.2f}s)", file=sys.stderr)
 
     # Near-duplicates (Rust)
     t = time.time()
-    near_dupes = native_helper.find_near_duplicates(tuples, config.get("similarity_threshold", 0.85))
+    near_dupes = native_helper.find_near_duplicates(entries, config.get("similarity_threshold", 0.85))
     print(f"Found {len(near_dupes)} near-duplicate clusters ({time.time() - t:.2f}s)", file=sys.stderr)
 
     # N-grams (Rust)
     t = time.time()
     ngrams = native_helper.extract_ngrams(
-        tuples,
+        entries,
         config.get("min_ngram", 3),
         config.get("max_ngram", 8),
         config.get("min_count", 3),
     )
     print(f"Found {len(ngrams)} significant n-grams ({time.time() - t:.2f}s)", file=sys.stderr)
 
-    # Repeated sequences (Rust)
+    # Repeated + near-duplicate sequences (Rust, single call)
     t = time.time()
-    sequences = native_helper.find_repeated_sequences(
-        tuples,
+    sequences, near_seqs = native_helper.find_all_sequences(
+        entries,
         config.get("min_seq_len", 2),
         config.get("max_seq_len", 8),
         config.get("min_seq_occurrences", 2),
-    )
-    print(f"Found {len(sequences)} repeated sequence patterns ({time.time() - t:.2f}s)", file=sys.stderr)
-
-    # Near-duplicate sequences (Rust)
-    t = time.time()
-    near_seqs = native_helper.find_near_duplicate_sequences(
-        tuples,
-        config.get("min_seq_len", 2),
-        config.get("max_seq_len", 8),
         config.get("seq_similarity_threshold", 0.80),
-        config.get("min_seq_occurrences", 2),
-        sequences,
     )
-    print(f"Found {len(near_seqs)} near-duplicate sequence patterns ({time.time() - t:.2f}s)", file=sys.stderr)
+    print(f"Found {len(sequences)} repeated + {len(near_seqs)} near-duplicate sequence patterns ({time.time() - t:.2f}s)", file=sys.stderr)
 
     elapsed = time.time() - start
     print(f"Analysis complete in {elapsed:.2f}s", file=sys.stderr)

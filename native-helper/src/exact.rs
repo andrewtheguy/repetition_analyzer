@@ -1,7 +1,36 @@
 use std::collections::HashMap;
 
 use crate::similarity::{normalize, similarity_above_threshold};
-use crate::types::{NearDuplicateCluster, Transcription};
+use crate::types::{ExactDuplicateGroup, NearDuplicateCluster, Transcription};
+
+pub fn find_exact_duplicates(entries: &[Transcription]) -> Vec<ExactDuplicateGroup> {
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, entry) in entries.iter().enumerate() {
+        let norm = normalize(&entry.text);
+        groups.entry(norm).or_default().push(i);
+    }
+
+    let mut result: Vec<ExactDuplicateGroup> = groups
+        .into_values()
+        .filter(|indices| indices.len() >= 2)
+        .map(|indices| {
+            let canonical_text = entries[indices[0]].text.clone();
+            let count = indices.len();
+            let index_pairs = indices
+                .iter()
+                .map(|&i| (entries[i].index, entries[i].id.clone()))
+                .collect();
+            ExactDuplicateGroup {
+                canonical_text,
+                count,
+                indices: index_pairs,
+            }
+        })
+        .collect();
+
+    result.sort_by(|a, b| b.count.cmp(&a.count));
+    result
+}
 
 pub fn find_near_duplicates(
     entries: &[Transcription],

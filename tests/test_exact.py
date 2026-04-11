@@ -1,6 +1,6 @@
-"""Tests for exact duplicate detection (Python implementation)."""
+"""Tests for exact duplicate detection."""
 
-from repetition_analyzer.exact import find_exact_duplicates
+from native_helper import find_exact_duplicates
 from repetition_analyzer.parse import Entry
 
 

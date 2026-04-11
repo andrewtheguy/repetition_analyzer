@@ -1,6 +1,7 @@
 """Segment extraction: write segments to markdown/text files with optional station classification."""
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,6 @@ def _write_individual_files(folder: Path, segments: list[dict[str, Any]]) -> Non
 
 
 def _output_category(outdir: Path, category: str, segments: list[dict[str, Any]], long_threshold: int) -> None:
-    import sys
     short = [s for s in segments if s["entry_count"] < long_threshold]
     long = [s for s in segments if s["entry_count"] >= long_threshold]
 
@@ -67,8 +67,6 @@ def _output_category(outdir: Path, category: str, segments: list[dict[str, Any]]
 
 
 def run_extract_segments(config: dict[str, Any]) -> None:
-    import sys
-
     with open(config["segments"]) as f:
         all_segments = json.load(f)
 
